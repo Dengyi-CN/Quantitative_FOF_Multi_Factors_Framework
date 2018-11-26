@@ -517,11 +517,11 @@ def get_significant_factor_number(factor_test_result, sample_list=None, factor_l
 
     for sample_name in sample_list:
 
-        for factor_name in factor_list:
+        for regression_method in regression_method_list:
 
-            for regression_method in regression_method_list:
+            for rolling_window in rolling_window_list:
 
-                for rolling_window in rolling_window_list:
+                for factor_name in factor_list:
 
                     for i in range(stratification_num):
 
