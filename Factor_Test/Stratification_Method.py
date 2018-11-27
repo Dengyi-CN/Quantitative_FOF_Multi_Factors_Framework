@@ -468,6 +468,10 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                             factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])].loc[date] = \
                                 set_linear_regression_result(regression_result, result_content_list, method=regression_method)
 
+                        # 把作为index的日期提出来成为一列，因为这一个dataframe只包括一个因子序号的一个档位回归结果，后期要整合所有档位到一起
+                        factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])] = \
+                            factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])].reset_index().rename(
+                                columns={'index': '数据提取日'})
                         print('完成单因子回归检验：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')' +
                               '-第' + quantile_dict[i] + '组-窗口期' + str(rolling_window))
 
@@ -507,50 +511,6 @@ def get_factor_stratification_hp_return(factor_stratification_return, market_mea
     return factor_stratification_hp_return
 
 
-def get_significant_factor_number(factor_test_result, sample_list=None, factor_list=None, regression_method_list=None, rolling_window_list=None,
-                                  stratification_num=10, quantile_dict=None, factor_category_dict=None, factor_type_dict=None, factor_name_dict=None):
-    significant_factor_columns = ['数据提取日', '因子序号', '因子大类', '因子小类', '因子名称', '档位', '回归方法', '滚动窗口',
-                                  'Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值',
-                                  'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值', 'Adj. R-squared']
-    all_factors_regression_result = pd.DataFrame(columns=significant_factor_columns)
-    significant_factor = pd.DataFrame(columns=significant_factor_columns)
-
-    for sample_name in sample_list:
-
-        for regression_method in regression_method_list:
-
-            for rolling_window in rolling_window_list:
-
-                for factor_name in factor_list:
-
-                    for i in range(stratification_num):
-
-                        # 保存全部回归结果到一张表上（存储Alpha）
-                        tempo_data = factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])].copy()
-                        tempo_data = tempo_data.reset_index().rename(columns={'index': '数据提取日'})
-                        tempo_data['回归方法'] = regression_method
-                        tempo_data['滚动窗口'] = rolling_window
-                        tempo_data = set_factor_info(tempo_data, factor_name, factor_category_dict[factor_name], factor_type_dict[factor_name],
-                                                     factor_name_dict[factor_name], quantile_dict[i])
-                        if (regression_method == 'OLS') | (regression_method == 'WLS'):
-                            tempo_data['Adj. R-squared'] = tempo_data['Adj. R-squared']
-                        all_factors_regression_result = pd.concat([all_factors_regression_result, tempo_data[significant_factor_columns]])
-
-                        # 筛选显著因子
-                        tempo_significant_factor = tempo_data[(tempo_data['Alpha p值'].astype(float) < 0.1) &
-                                                              (tempo_data['Alpha'].astype(float) > 0)].copy()
-
-                        significant_factor = pd.concat([significant_factor, tempo_significant_factor[significant_factor_columns]])
-
-                    print('完成小类因子Alpha存储，显著因子筛选：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] +
-                          ')-回归方法' + regression_method + '-滚动窗口' + str(rolling_window))
-            print('----------------------------------')
-
-    all_factors_regression_result.index = range(all_factors_regression_result.shape[0])
-    significant_factor.index = range(significant_factor.shape[0])
-    return all_factors_regression_result, significant_factor
-
-
 def transform_dict_to_dataframe(dict_data, keys_column_name_list):
     """
     用于将处理过程中保存的dict类型转为dataframe，因为在处理过程中用dict更加方便明了，但是在最终结果展示环节可能还需要dataframe的形式导出成excel
@@ -568,6 +528,7 @@ def transform_dict_to_dataframe(dict_data, keys_column_name_list):
     dataframe_data.index = range(dataframe_data.shape[0])
 
     return dataframe_data
+
 
 def get_purified_factor(prior_purified_data, purified_class=None, lower_class=None, regression_method_list=None, rolling_window_list=None,
                         factor_stratification_return=None, index_return_df=None, get_factor_data_date_list=None):
@@ -795,7 +756,7 @@ clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe =
 # ----------------------------------------------------------分组构建（开始）----------------------------------------------------------------------------
 
 print('-----------------------------------------------------------------------')
-print('开始根据因子生成组合。')
+print('开始根据因子生成组合')
 
 factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=['申万A股'], factor_list=factor_list,
                                                             stratification_num=stratification_number, quantile_dict=quantile_dict)
@@ -803,7 +764,7 @@ factor_stratification_data = get_factor_stratification_data(clean_data_after_out
 # ****************************************************************************************************************************************************
 
 print('-----------------------------------------------------------------------')
-print('开始计算分层收益率。')
+print('开始计算分层收益率')
 
 factor_stratification_return = get_factor_stratification_return(factor_stratification_data, stock_return_df, sample_list=['申万A股'],
                                                                 factor_list=factor_list, startification_num=stratification_number,
@@ -814,7 +775,7 @@ factor_stratification_return = get_factor_stratification_return(factor_stratific
 # ----------------------------------------------------------时间序列回归计算alpha、beta（开始）----------------------------------------------------------
 
 print('-----------------------------------------------------------------------')
-print('开始进行单因子检测。')
+print('开始进行单因子检测')
 
 factor_test_result, _ = get_factor_test_result(factor_stratification_return, index_return_df, sample_list=['申万A股'], factor_list=factor_list,
                                                get_factor_data_date_list=get_factor_data_date_list,
@@ -829,7 +790,7 @@ factor_test_result, _ = get_factor_test_result(factor_stratification_return, ind
 # 1. 小类因子收益率
 
 print('-----------------------------------------------------------------------')
-print('保存因子序号各档收益率数据。')
+print('保存因子序号各档收益率数据')
 
 factor_stratification_hp_return = get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=['申万A股'],
                                                                       factor_list=factor_list, stratification_num=stratification_number,
@@ -838,11 +799,13 @@ factor_stratification_hp_return = get_factor_stratification_hp_return(factor_str
 # 2. 小类因子Alpha(不管显著性)，顺便筛选出p值小于0.1的因子
 
 print('-----------------------------------------------------------------------')
-print('保存因子序号各档回归检测结果，筛选有效因子。')
-all_factor_number_regression_test_result, significant_factor_number = \
-    get_significant_factor_number(factor_test_result, sample_list=['申万A股'], factor_list=factor_list, regression_method_list=['WLS'],
-                                  rolling_window_list=[32], stratification_num=stratification_number, quantile_dict=quantile_dict,
-                                  factor_category_dict=factor_category_dict, factor_type_dict=factor_type_dict, factor_name_dict=factor_name_dict)
+print('保存因子序号各档回归检测结果，筛选有效因子')
+all_factor_number_regression_test_result = transform_dict_to_dataframe(factor_test_result, ['股票池', '回归方法', '滚动周期', '因子序号', '档位'])
+significant_factor_number = all_factor_number_regression_test_result[(all_factor_number_regression_test_result['Alpha p值'].astype(float) < 0.1) & \
+                            (all_factor_number_regression_test_result['Alpha'].astype(float) > 0)].copy()
+significant_factor_number.index = range(significant_factor_number.shape[0])
+print('完成：保存因子序号各档回归检测结果，筛选有效因子')
+
 
 # 3. 筛选出每个截面的显著因子
 factor_info_list = ['数据提取日', '回归方法', '滚动窗口', '因子大类', '因子小类', '因子序号', '档位']
