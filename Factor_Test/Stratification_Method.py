@@ -551,6 +551,24 @@ def get_significant_factor_number(factor_test_result, sample_list=None, factor_l
     return all_factors_regression_result, significant_factor
 
 
+def transform_dict_to_dataframe(dict_data, keys_column_name_list):
+    """
+    用于将处理过程中保存的dict类型转为dataframe，因为在处理过程中用dict更加方便明了，但是在最终结果展示环节可能还需要dataframe的形式导出成excel
+    :param dict_data:
+    :param keys_column_name_list: 该参数是dict_data中要转为一列column的key的所属类别，例如dict_data的keys是('申万A股', 'WLS')，
+    那么该参数就是['股票池', '回归方法']
+    :return: 将dict_data中的keys全部转换为了columns的dataframe
+    """
+
+    dataframe_data = pd.DataFrame()
+    for key_list, df_data in dict_data.items():
+        for key_i, key_column_name in enumerate(keys_column_name_list):
+            df_data[key_column_name] = key_list[key_i]
+        dataframe_data = pd.concat([dataframe_data, df_data])
+    dataframe_data.index = range(dataframe_data.shape[0])
+
+    return dataframe_data
+
 def get_purified_factor(prior_purified_data, purified_class=None, lower_class=None, regression_method_list=None, rolling_window_list=None,
                         factor_stratification_return=None, index_return_df=None, get_factor_data_date_list=None):
     """
