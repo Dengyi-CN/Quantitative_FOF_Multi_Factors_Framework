@@ -534,24 +534,34 @@ def transform_dict_to_dataframe(dict_data, keys_column_name_list):
 
 def get_purified_factor(prior_purified_data, purified_class=None, lower_class=None, sample_name=None, regression_model=None, rolling_window=None,
                         factor_stratification_return=None, index_return_df=None, get_factor_data_date_list=None):
-    """通用的因子提纯函数，因子序列提纯为因子小类，因子小类提纯为因子大类都能使用，暂时只用了取解释度最高的因子，因此只能用WLS或者OLS的方法
-    :param prior_purified_data:被提纯前的数据，即需要被提纯的数据
-    :param purified_class:需要被提纯的类别名称。例如在因子小类中提纯，purified_class_name就是因子小类
-    :param lower_class:lower类表示这个类别下属的类别。例如在因子小类中提纯，lower_class_name就是因子序号
-    :return 被提纯后的数据
+    """
+    通用的因子提纯函数，因子序列提纯为因子小类，因子小类提纯为因子大类都能使用，暂时只用了取解释度最高的因子，因此只能用WLS或者OLS的方法
+    :param prior_purified_data:
+    :param purified_class:
+    :param lower_class:
+    :param sample_name:
+    :param regression_model:
+    :param rolling_window:
+    :param factor_stratification_return:
+    :param index_return_df:
+    :param get_factor_data_date_list:
+    :return:
     """
 
     # 变量声明
     within_purified_class_factor_corr = {}  # 提纯后，该类别内所有纯净小类因子的相关系数
-    # all_purified_data = {}  # 每个数据提取日，在每个因子小类内，对所有单因子显著的因子进行提纯，保留提纯后全部显著的因子
-    # most_significant_purified_data = {}  # 每个数据提取日，在每个因子小类内，对所有单因子显著的因子进行提纯，保留解释度最高的那个因子
 
     # 变量定义
     purified_class_name_list = prior_purified_data[purified_class].unique().tolist()  # 得到所有类别名称
-    factor_info_list = ['数据提取日', '回归模型', '滚动窗口', '因子大类', '因子小类', '因子序号', '档位']
-    required_factor_info_list = ['数据提取日'] + factor_info_list[factor_info_list.index(lower_class):]
+    factor_info_list = ['因子大类', '因子小类', '因子序号', '档位']
+    required_factor_info_list = factor_info_list[factor_info_list.index(lower_class):]
+    complement_factor_info_list = factor_info_list[:factor_info_list.index(lower_class)]
     factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误',
                              'Beta p值', 'Adj. R-squared']
+    all_factor_info_list = ['数据提取日'] + factor_info_list + factor_test_info_list
+
+    all_purified_data = pd.DataFrame(columns=all_factor_info_list)
+    MES_purified_data = pd.DataFrame(columns=all_factor_info_list)
 
     if regression_model == 'WLS':
         weight_dict = {'cos': [1 / (math.cos(x) / sum([math.cos(x) for x in np.linspace(0, math.pi / 2, rolling_window)]))
@@ -559,8 +569,8 @@ def get_purified_factor(prior_purified_data, purified_class=None, lower_class=No
 
     for class_name in purified_class_name_list:
 
-        all_purified_data = pd.DataFrame(columns=required_factor_info_list + factor_test_info_list)
-        most_significant_purified_data = pd.DataFrame(columns=required_factor_info_list + factor_test_info_list)
+        tempo_all_purified_data = pd.DataFrame(columns=all_factor_info_list)
+        tempo_MES_purified_data = pd.DataFrame(columns=all_factor_info_list)
 
         tempo_data = prior_purified_data[prior_purified_data[purified_class] == class_name].copy()
 
@@ -571,6 +581,8 @@ def get_purified_factor(prior_purified_data, purified_class=None, lower_class=No
 
             # (1) 根据回归最后的时间点找到该回归显著的因子，如果只有1个那么就不用提纯了
             tempo_date_data = tempo_data[tempo_data['数据提取日'] == regression_end_date].copy()
+            tempo_date_data.index = range(tempo_date_data.shape[0])
+
             lower_class_name_list = tempo_date_data[lower_class].tolist()  # 由于最底层只取最显著的那一档，所以每个因子序号/因子名称唯一
             if len(lower_class_name_list) == 1:
                 continue
@@ -580,15 +592,14 @@ def get_purified_factor(prior_purified_data, purified_class=None, lower_class=No
             # (2.1) 根据回归最后的时间点找到滚动窗口时间段
             regression_end_date_index = get_factor_data_date_list.index(regression_end_date)  # index是31，表示第32个周
             # list后不包，所以要+1
-            regression_period = get_factor_data_date_list[
-                                regression_end_date_index - rolling_window + 1:regression_end_date_index + 1]
+            regression_period = get_factor_data_date_list[regression_end_date_index - rolling_window + 1:regression_end_date_index + 1]
 
             # (2.2) 构建第一次回归所需数据
             first_regression_data = pd.DataFrame(index=regression_period, columns=lower_class_name_list)
             for i in tempo_date_data.index:
                 factor_num = tempo_date_data.loc[i, '因子序号']
                 factor_stratification_num = tempo_date_data.loc[i, '档位']
-                first_regression_data[factor_num] = \
+                first_regression_data[tempo_date_data.loc[i, lower_class]] = \
                     factor_stratification_return[(sample_name, factor_num, factor_stratification_num)]['持仓期收益率'].loc[regression_period]
 
             # (2.3) 第一阶段回归：回归取残差项
@@ -644,28 +655,35 @@ def get_purified_factor(prior_purified_data, purified_class=None, lower_class=No
 
             significant_result = tempo_date_data[required_factor_info_list].merge(
                 significant_result, on=[lower_class], how='right').sort_values(by=['Adj. R-squared'], ascending=False)
+            for info_name in complement_factor_info_list:
+                if info_name == '因子大类':
+                    significant_result[info_name] = significant_result['因子序号'].map(factor_category_dict)
+                elif info_name == '因子小类':
+                    significant_result[info_name] = significant_result['因子序号'].map(factor_type_dict)
+            significant_result['数据提取日'] = regression_end_date
 
-            all_purified_data = pd.concat([all_purified_data, significant_result[required_factor_info_list + factor_test_info_list]])
+            tempo_all_purified_data = pd.concat([tempo_all_purified_data, significant_result[all_factor_info_list]])
 
             # 挑选解释度最高的那个
             most_explaination_result = significant_result.iloc[:1, :].copy()
-            most_significant_purified_data = pd.concat([most_significant_purified_data,
-                                                        most_explaination_result[required_factor_info_list + factor_test_info_list]])
+            tempo_MES_purified_data = pd.concat([tempo_MES_purified_data, most_explaination_result[all_factor_info_list]])
+
+        all_purified_data = pd.concat([all_purified_data, tempo_all_purified_data])
+        MES_purified_data = pd.concat([MES_purified_data, tempo_MES_purified_data])
+
         print('完成因子提纯：' + purified_class + '(' + class_name + ')')
 
-    return all_purified_data, most_significant_purified_data, within_purified_class_factor_corr
+    return all_purified_data, MES_purified_data, within_purified_class_factor_corr
 
 
-def purify_factor_number_in_factor_type(significant_factor_number, factor_stratification_return, index_return_df, regression_model_list,
-                                        rolling_window_list, get_factor_data_date_list, factor_category_dict, factor_type_dict):
-
-    factor_info_list = ['数据提取日','因子大类', '因子小类', '因子序号', '档位']
+def get_MES_factor_stratification_number_in_factor_number(all_factor_stratification_number_regression_test_result,
+                                                          sample_list, regression_model_list, rolling_window_list,
+                                                          factor_category_dict, factor_type_dict):
+    MES_factor_stratification_number = {}
+    factor_info_list = ['因子大类', '因子小类', '因子序号', '档位']
     factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
                              'Adj. R-squared']
-    all_info_list = factor_info_list + factor_test_info_list
-    MES_factor_number = {}  # Most Explaination Significant
-    all_factor_number_after_purified = {}
-    MES_factor_number_after_purified = {}
+    all_info_list = ['数据提取日'] + factor_info_list + factor_test_info_list
 
     for sample_name in sample_list:
 
@@ -673,25 +691,66 @@ def purify_factor_number_in_factor_type(significant_factor_number, factor_strati
 
             for rolling_window in rolling_window_list:
 
-                tempo_selected_significant_factor = significant_factor_number[(significant_factor_number['回归模型'] == regression_model) &
-                                                                              (significant_factor_number['滚动窗口'] == rolling_window)].copy()
+                tempo_factor_stratification_number = all_factor_stratification_number_regression_test_result[
+                    (all_factor_stratification_number_regression_test_result['样本范围'] == sample_name) &
+                    (all_factor_stratification_number_regression_test_result['回归模型'] == regression_model) &
+                    (all_factor_stratification_number_regression_test_result['滚动窗口'] == rolling_window)].copy()
+
+                tempo_significant_factor_stratifaction_number = tempo_factor_stratification_number[
+                    (tempo_factor_stratification_number['Alpha'].astype(float) > 0) &
+                    (tempo_factor_stratification_number['Alpha p值'].astype(float) <= 0.1)].copy()
 
                 # (1) 每期每个因子序号下解释度最高的那个Alpha显著为正的档位
-                MES_factor_number[(sample_name, regression_model, rolling_window)] = \
-                    tempo_selected_significant_factor.groupby(by=['数据提取日', '因子序号']).apply(
+                MES_factor_stratification_number[(sample_name, regression_model, rolling_window)] = \
+                    tempo_significant_factor_stratifaction_number.groupby(by=['数据提取日', '因子序号']).apply(
                         lambda df: df[['档位'] + factor_test_info_list].sort_values(by='Adj. R-squared', ascending=False).iloc[0, :]).reset_index()
-                # 并入factor的信息
-                # MES_factor_number[(sample_name, regression_model, rolling_window)]['回归模型'] = regression_model
-                # MES_factor_number[(sample_name, regression_model, rolling_window)]['滚动窗口'] = rolling_window
-                MES_factor_number[(sample_name, regression_model, rolling_window)]['因子大类'] = \
-                    MES_factor_number[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
-                MES_factor_number[(sample_name, regression_model, rolling_window)]['因子小类'] = \
-                    MES_factor_number[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_type_dict)
+
+                MES_factor_stratification_number[(sample_name, regression_model, rolling_window)]['因子大类'] = \
+                    MES_factor_stratification_number[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
+                MES_factor_stratification_number[(sample_name, regression_model, rolling_window)]['因子小类'] = \
+                    MES_factor_stratification_number[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_type_dict)
+
+                # (2) 调换columns顺序方便后续查看
+                MES_factor_stratification_number[(sample_name, regression_model, rolling_window)] = \
+                    MES_factor_stratification_number[(sample_name, regression_model, rolling_window)][all_info_list]
+
+    return MES_factor_stratification_number
+
+
+def purify_factor_number_in_factor_type(MES_factor_stratification_number, factor_stratification_return, index_return_df,
+                                        sample_list, regression_model_list, rolling_window_list,
+                                        get_factor_data_date_list, factor_category_dict, factor_type_dict):
+    """ 暂时用解释度最高的档位作为该因子序号的代表，在每个因子小类中进行提纯
+    :param MES_factor_stratification_number:在某个因子序号中解释度最高的档位
+    :param factor_stratification_return:
+    :param index_return_df:
+    :param sample_list:
+    :param regression_model_list:
+    :param rolling_window_list:
+    :param get_factor_data_date_list:
+    :param factor_category_dict:
+    :param factor_type_dict:
+    :return:参数1是提纯后仍显著的所有因子序号，参数2是提纯后仍显著的Adj. R-squared最高的那个因子序号
+    """
+
+    factor_info_list = ['数据提取日','因子大类', '因子小类', '因子序号', '档位']
+    factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
+                             'Adj. R-squared']
+    all_info_list = factor_info_list + factor_test_info_list
+
+    all_factor_number_after_purified = {}
+    MES_factor_number_after_purified = {}  # Most Explaination Significant
+
+    for sample_name in sample_list:
+
+        for regression_model in regression_model_list:
+
+            for rolling_window in rolling_window_list:
 
                 # (2) 在同一因子小类中，进行因子序号提纯
                 all_factor_number_after_purified[(sample_name, regression_model, rolling_window)], \
                 MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)], _  = \
-                    get_purified_factor(MES_factor_number[(sample_name, regression_model, rolling_window)],
+                    get_purified_factor(MES_factor_stratification_number[(sample_name, regression_model, rolling_window)],
                                         purified_class='因子小类', lower_class='因子序号', sample_name=sample_name, regression_model=regression_model,
                                         rolling_window=rolling_window, factor_stratification_return=factor_stratification_return,
                                         index_return_df=index_return_df, get_factor_data_date_list=get_factor_data_date_list)
@@ -717,8 +776,64 @@ def purify_factor_number_in_factor_type(significant_factor_number, factor_strati
     return all_factor_number_after_purified, MES_factor_number_after_purified
 
 
-def purify_factor_type(MES_purified_factor_number, factor_stratification_return, index_return_df, regression_model_list, rolling_window_list,
-                       get_factor_data_date_list, factor_category_dict, factor_type_dict):
+def purify_factor_type_in_factor_category(MES_purified_factor_number, factor_stratification_return, index_return_df,
+                                          sample_list, regression_model_list, rolling_window_list,
+                                          get_factor_data_date_list, factor_category_dict):
+
+    """ 暂时用解释度最高的因子序号作为该因子小类的代表，在每个因子大类中进行提纯
+    :param MES_purified_factor_number:因子小类提纯后仍显著的Adj. R-squared最高的那个因子序号
+    :param factor_stratification_return:
+    :param index_return_df:
+    :param sample_list:
+    :param regression_model_list:
+    :param rolling_window_list:
+    :param get_factor_data_date_list:
+    :param factor_category_dict:
+    :return:
+    """
+
+    factor_info_list = ['数据提取日', '因子大类', '因子小类', '因子序号', '档位']
+    factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
+                             'Adj. R-squared']
+    all_info_list = factor_info_list + factor_test_info_list
+
+    all_factor_type_after_purified = {}
+    MES_factor_after_purified = {}  # Most Explaination Significant
+
+    for sample_name in sample_list:
+
+        for regression_model in regression_model_list:
+
+            for rolling_window in rolling_window_list:
+
+                # (1) 在同一因子大类中，进行因子小类提纯
+                all_factor_type_after_purified[(sample_name, regression_model, rolling_window)], \
+                MES_factor_after_purified[(sample_name, regression_model, rolling_window)], _  = \
+                    get_purified_factor(MES_purified_factor_number[(sample_name, regression_model, rolling_window)],
+                                        purified_class='因子大类', lower_class='因子小类', sample_name=sample_name, regression_model=regression_model,
+                                        rolling_window=rolling_window, factor_stratification_return=factor_stratification_return,
+                                        index_return_df=index_return_df, get_factor_data_date_list=get_factor_data_date_list)
+
+                # (2) 补充factor信息
+                all_factor_type_after_purified[(sample_name, regression_model, rolling_window)]['因子大类'] = \
+                    all_factor_type_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
+                # all_factor_type_after_purified[(sample_name, regression_model, rolling_window)]['因子小类'] = \
+                #     all_factor_type_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_type_dict)
+                MES_factor_after_purified[(sample_name, regression_model, rolling_window)]['因子大类'] = \
+                    MES_factor_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
+                # MES_factor_after_purified[(sample_name, regression_model, rolling_window)]['因子小类'] = \
+                #     MES_factor_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_type_dict)
+
+                # (3) 调换columns顺序，方便查看
+                all_factor_type_after_purified[(sample_name, regression_model, rolling_window)] = \
+                    all_factor_type_after_purified[(sample_name, regression_model, rolling_window)][all_info_list]
+                MES_factor_after_purified[(sample_name, regression_model, rolling_window)] = \
+                    MES_factor_after_purified[(sample_name, regression_model, rolling_window)][all_info_list]
+
+                print('完成因子大类内提纯：' + '，'.join([sample_name, regression_model, str(rolling_window)]))
+            print('-----------------------------------')
+
+    return all_factor_type_after_purified, MES_factor_after_purified
 
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
@@ -844,25 +959,43 @@ factor_stratification_hp_return = get_factor_stratification_hp_return(factor_str
                                                                       factor_list=factor_list, stratification_num=stratification_number,
                                                                       quantile_dict=quantile_dict, factor_name_dict=factor_name_dict)
 
-# 2. 筛选出显著的因子序号
+# 2. 将回归结果保存在一个完成的dataframe中，以便后续保存
 
 print('-----------------------------------------------------------------------')
-print('保存因子序号各档回归检测结果，筛选有效因子')
-all_factor_number_regression_test_result = transform_dict_to_dataframe(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
-significant_factor_number = all_factor_number_regression_test_result[(all_factor_number_regression_test_result['Alpha p值'].astype(float) < 0.1) & \
-                            (all_factor_number_regression_test_result['Alpha'].astype(float) > 0)].copy()
-significant_factor_number.index = range(significant_factor_number.shape[0])
-print('完成：保存因子序号各档回归检测结果，筛选有效因子')
+print('保存因子序号各档回归检测结果')
 
-# 3. 对因子序号、因子小类进行提纯
+factor_test_result_df = transform_dict_to_dataframe(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
+
+print('完成：保存因子序号各档回归检测结果')
+
+# 3. 在显著的(Alpha为正且p值小于1)各档位中，暂时筛选出解释度最高的那个档位作为该因子序号的代表
 print('-----------------------------------------------------------------------')
-print('开始因子提纯')
+print('筛选解释度最高的有效因子序号档位')
+
+MES_factor_stratification_number = get_MES_factor_stratification_number_in_factor_number(
+    factor_test_result_df, ['申万A股'], ['WLS'], [32], factor_category_dict, factor_type_dict)
+
+print('完成：筛选解释度最高的有效因子序号档位')
+
+# 4. 对因子小类进行提纯
+print('-----------------------------------------------------------------------')
+print('开始因子小类提纯')
 
 all_factor_number_after_purified, MES_factor_number_after_purified = \
-    purify_factor_number_in_factor_type(significant_factor_number, factor_stratification_return, index_return_df, ['WLS'], [32],
+    purify_factor_number_in_factor_type(MES_factor_stratification_number, factor_stratification_return, index_return_df, ['申万A股'], ['WLS'], [32],
                                         get_factor_data_date_list, factor_category_dict, factor_type_dict)
+print('完成：因子小类提纯')
 
-# 先把dict的存储方式修改一下
+# 5. 对因子大类进行提纯
+
+print('-----------------------------------------------------------------------')
+print('开始因子大类提纯')
+
+all_factor_type_after_purified, MSE_factor_type_after_purified = \
+    purify_factor_type_in_factor_category(MES_factor_number_after_purified, factor_stratification_return, index_return_df, ['申万A股'], ['WLS'], [32],
+                                          get_factor_data_date_list, factor_category_dict)
+
+print('完成：因子大类提纯')
 
 # ----------------------------------------------------------显著因子挑选及所需存储数据（结束）------------------------------------------------------------
 
