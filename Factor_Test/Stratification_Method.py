@@ -391,7 +391,7 @@ def get_factor_stratification_return(factor_stratification_data, stock_return_df
 
 
 def get_factor_test_result(factor_stratification_return, index_return_df, sample_list=None, factor_list=None,
-                           get_factor_data_date_list=None, regression_method_list=None,
+                           get_factor_data_date_list=None, regression_model_list=None,
                            quantile_dict=None, rolling_window_list=None, stratification_num=10):
 
     ts_constant_test_result_dict = {}
@@ -424,8 +424,8 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                 ts_constant_test_result_dict[(sample_name, factor_name, quantile_dict[i])].loc['指数收益率'] = constant_test(ts_regression_df['Beta'])
 
             # 2. 滚动窗口回归
-            for regression_method in regression_method_list:
-                # (1) 选择不同的回归方法
+            for regression_model in regression_model_list:
+                # (1) 选择不同的回归模型
 
                 for rolling_window in rolling_window_list:
                     # (2) 选择不同的滚动窗口长度
@@ -434,11 +434,11 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                     for i in range(stratification_num):
 
                         # (3) 每档都分别进行滚动窗口回归
-                        if (regression_method == 'WLS') | (regression_method == 'OLS'):
-                            factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])] = \
+                        if (regression_model == 'WLS') | (regression_model == 'OLS'):
+                            factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])] = \
                                 pd.DataFrame(index=rolling_window_end_date_list, columns=result_content_list + ['Adj. R-squared'])
-                        elif regression_method == 'RLM':
-                            factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])] = \
+                        elif regression_model == 'RLM':
+                            factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])] = \
                                 pd.DataFrame(index=rolling_window_end_date_list, columns=result_content_list)
 
                         for date_i, date in enumerate(rolling_window_end_date_list, rolling_window):
@@ -450,14 +450,14 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                             regression_data['Alpha'] = 1
                             regression_data['Beta'] = index_return_df[sample_name + '收益率'].loc[regression_period]
 
-                            if regression_method == 'RLM':
+                            if regression_model == 'RLM':
                                 regression_result = sm.RLM(regression_data.loc[regression_period, '因子收益率'].astype(float),
                                                            regression_data.loc[regression_period, ['Alpha', 'Beta']].astype(float)).fit()
-                            elif regression_method == 'OLS':
+                            elif regression_model == 'OLS':
                                 regression_result = sm.OLS(regression_data.loc[regression_period, '因子收益率'].astype(float),
                                                            regression_data.loc[regression_period, ['Alpha', 'Beta']].astype(
                                                                float)).fit().get_robustcov_results()
-                            elif regression_method == 'WLS':
+                            elif regression_model == 'WLS':
                                 weight_dict = {'cos': [1 / (math.cos(x) / sum([math.cos(x) for x in np.linspace(0, math.pi / 2, rolling_window)]))
                                                        for x in np.linspace(0, math.pi / 2, rolling_window)]}
 
@@ -465,9 +465,13 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                                                            regression_data.loc[regression_period, ['Alpha', 'Beta']].astype(float),
                                                            weights=weight_dict['cos']).fit().get_robustcov_results()
 
-                            factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])].loc[date] = \
-                                set_linear_regression_result(regression_result, result_content_list, method=regression_method)
+                            factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])].loc[date] = \
+                                set_linear_regression_result(regression_result, result_content_list, method=regression_model)
 
+                        # 把作为index的日期提出来成为一列，因为这一个dataframe只包括一个因子序号的一个档位回归结果，后期要整合所有档位到一起
+                        factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])] = \
+                            factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])].reset_index().rename(
+                                columns={'index': '数据提取日'})
                         print('完成单因子回归检验：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')' +
                               '-第' + quantile_dict[i] + '组-窗口期' + str(rolling_window))
 
@@ -488,18 +492,20 @@ def get_factor_stratification_hp_return(factor_stratification_return, market_mea
         for factor_name in factor_list:
 
             factor_stratification_hp_return[(sample_name, factor_name)] = \
-                pd.DataFrame(index=get_factor_data_date_list, columns=list(quantile_dict.values()) + ['相邻档超额收益差平方之和', '相邻档超额收益差平方均值'])
+                pd.DataFrame(index=get_factor_data_date_list, columns=list(quantile_dict.values()) + ['相邻档超额收益差平方和', '相邻档超额收益差平方均值'])
             for i in range(stratification_num):
                 factor_stratification_hp_return[(sample_name, factor_name)][quantile_dict[i]] = \
                     factor_stratification_return[(sample_name, factor_name, quantile_dict[i])]['持仓期收益率']
 
-            factor_stratification_hp_return[(sample_name, factor_name)]['相邻档超额收益差平方之和'] = \
+            factor_stratification_hp_return[(sample_name, factor_name)]['相邻档超额收益差平方和'] = \
                 factor_stratification_hp_return[(sample_name, factor_name)][list(quantile_dict.values())].sub(
                     market_mean_return['持仓期收益率'], axis=0).rolling(2, axis=1).apply(lambda s: s[1] - s[0]).applymap(lambda v: v ** 2).sum(axis=1)
             factor_stratification_hp_return[(sample_name, factor_name)]['相邻档超额收益差平方均值'] = \
                 factor_stratification_hp_return[(sample_name, factor_name)][list(quantile_dict.values())].sub(
                     market_mean_return['持仓期收益率'], axis=0).rolling(2, axis=1).apply(lambda s: s[1] - s[0]).applymap(lambda v: v ** 2).mean(axis=1)
 
+            factor_stratification_hp_return[(sample_name, factor_name)] = \
+                factor_stratification_hp_return[(sample_name, factor_name)].reset_index().rename(columns={'index': '数据提取日'})
             print('保存各因子序号分档收益率，计算各档收益发散性指标：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')')
 
         print('----------------------------------')
@@ -507,53 +513,28 @@ def get_factor_stratification_hp_return(factor_stratification_return, market_mea
     return factor_stratification_hp_return
 
 
-def get_significant_factor_number(factor_test_result, sample_list=None, factor_list=None, regression_method_list=None, rolling_window_list=None,
-                                  stratification_num=10, quantile_dict=None, factor_category_dict=None, factor_type_dict=None, factor_name_dict=None):
-    significant_factor_columns = ['数据提取日', '因子序号', '因子大类', '因子小类', '因子名称', '档位', '回归方法', '滚动窗口',
-                                  'Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值',
-                                  'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值', 'Adj. R-squared']
-    all_factors_regression_result = pd.DataFrame(columns=significant_factor_columns)
-    significant_factor = pd.DataFrame(columns=significant_factor_columns)
-
-    for sample_name in sample_list:
-
-        for factor_name in factor_list:
-
-            for regression_method in regression_method_list:
-
-                for rolling_window in rolling_window_list:
-
-                    for i in range(stratification_num):
-
-                        # 保存全部回归结果到一张表上（存储Alpha）
-                        tempo_data = factor_test_result[(sample_name, regression_method, rolling_window, factor_name, quantile_dict[i])].copy()
-                        tempo_data = tempo_data.reset_index().rename(columns={'index': '数据提取日'})
-                        tempo_data['回归方法'] = regression_method
-                        tempo_data['滚动窗口'] = rolling_window
-                        tempo_data = set_factor_info(tempo_data, factor_name, factor_category_dict[factor_name], factor_type_dict[factor_name],
-                                                     factor_name_dict[factor_name], quantile_dict[i])
-                        if (regression_method == 'OLS') | (regression_method == 'WLS'):
-                            tempo_data['Adj. R-squared'] = tempo_data['Adj. R-squared']
-                        all_factors_regression_result = pd.concat([all_factors_regression_result, tempo_data[significant_factor_columns]])
-
-                        # 筛选显著因子
-                        tempo_significant_factor = tempo_data[(tempo_data['Alpha p值'].astype(float) < 0.1) &
-                                                              (tempo_data['Alpha'].astype(float) > 0)].copy()
-
-                        significant_factor = pd.concat([significant_factor, tempo_significant_factor[significant_factor_columns]])
-
-                    print('完成小类因子Alpha存储，显著因子筛选：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] +
-                          ')-回归方法' + regression_method + '-滚动窗口' + str(rolling_window))
-            print('----------------------------------')
-
-    all_factors_regression_result.index = range(all_factors_regression_result.shape[0])
-    significant_factor.index = range(significant_factor.shape[0])
-    return all_factors_regression_result, significant_factor
-
-
-def get_purified_factor(prior_purified_data, purified_class=None, lower_class=None, regression_method_list=None, rolling_window_list=None,
-                        factor_stratification_return=None, index_return_df=None, get_factor_data_date_list=None):
+def transform_dict_to_dataframe(dict_data, keys_column_name_list):
     """
+    用于将处理过程中保存的dict类型转为dataframe，因为在处理过程中用dict更加方便明了，但是在最终结果展示环节可能还需要dataframe的形式导出成excel
+    :param dict_data:
+    :param keys_column_name_list: 该参数是dict_data中要转为一列column的key的所属类别，例如dict_data的keys是('申万A股', 'WLS')，
+    那么该参数就是['股票池', '回归模型']
+    :return: 将dict_data中的keys全部转换为了columns的dataframe
+    """
+
+    dataframe_data = pd.DataFrame()
+    for key_list, df_data in dict_data.items():
+        for key_i, key_column_name in enumerate(keys_column_name_list):
+            df_data[key_column_name] = key_list[key_i]
+        dataframe_data = pd.concat([dataframe_data, df_data])
+    dataframe_data.index = range(dataframe_data.shape[0])
+
+    return dataframe_data
+
+
+def get_purified_factor(prior_purified_data, purified_class=None, lower_class=None, sample_name=None, regression_model=None, rolling_window=None,
+                        factor_stratification_return=None, index_return_df=None, get_factor_data_date_list=None):
+    """通用的因子提纯函数，因子序列提纯为因子小类，因子小类提纯为因子大类都能使用，暂时只用了取解释度最高的因子，因此只能用WLS或者OLS的方法
     :param prior_purified_data:被提纯前的数据，即需要被提纯的数据
     :param purified_class:需要被提纯的类别名称。例如在因子小类中提纯，purified_class_name就是因子小类
     :param lower_class:lower类表示这个类别下属的类别。例如在因子小类中提纯，lower_class_name就是因子序号
@@ -562,136 +543,182 @@ def get_purified_factor(prior_purified_data, purified_class=None, lower_class=No
 
     # 变量声明
     within_purified_class_factor_corr = {}  # 提纯后，该类别内所有纯净小类因子的相关系数
-    all_purified_data = {}  # 每个数据提取日，在每个因子小类内，对所有单因子显著的因子进行提纯，保留提纯后全部显著的因子
-    most_significant_purified_data = {}  # 每个数据提取日，在每个因子小类内，对所有单因子显著的因子进行提纯，保留解释度最高的那个因子
+    # all_purified_data = {}  # 每个数据提取日，在每个因子小类内，对所有单因子显著的因子进行提纯，保留提纯后全部显著的因子
+    # most_significant_purified_data = {}  # 每个数据提取日，在每个因子小类内，对所有单因子显著的因子进行提纯，保留解释度最高的那个因子
 
     # 变量定义
     purified_class_name_list = prior_purified_data[purified_class].unique().tolist()  # 得到所有类别名称
-    factor_info_list = ['数据提取日', '回归方法', '滚动窗口', '因子大类', '因子小类', '因子序号', '档位']
+    factor_info_list = ['数据提取日', '回归模型', '滚动窗口', '因子大类', '因子小类', '因子序号', '档位']
     required_factor_info_list = ['数据提取日'] + factor_info_list[factor_info_list.index(lower_class):]
     factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误',
                              'Beta p值', 'Adj. R-squared']
 
-    # 每个因子小类下计算剔除冗余因子
+    if regression_model == 'WLS':
+        weight_dict = {'cos': [1 / (math.cos(x) / sum([math.cos(x) for x in np.linspace(0, math.pi / 2, rolling_window)]))
+                               for x in np.linspace(0, math.pi / 2, rolling_window)]}
+
+    for class_name in purified_class_name_list:
+
+        all_purified_data = pd.DataFrame(columns=required_factor_info_list + factor_test_info_list)
+        most_significant_purified_data = pd.DataFrame(columns=required_factor_info_list + factor_test_info_list)
+
+        tempo_data = prior_purified_data[prior_purified_data[purified_class] == class_name].copy()
+
+        # 注意：此处直接忽略了没有显著因子的日期，只对存在显著因子的日期进行提纯
+        tempo_regression_end_date_list = tempo_data['数据提取日'].unique().tolist()
+
+        for regression_end_date in tempo_regression_end_date_list:
+
+            # (1) 根据回归最后的时间点找到该回归显著的因子，如果只有1个那么就不用提纯了
+            tempo_date_data = tempo_data[tempo_data['数据提取日'] == regression_end_date].copy()
+            lower_class_name_list = tempo_date_data[lower_class].tolist()  # 由于最底层只取最显著的那一档，所以每个因子序号/因子名称唯一
+            if len(lower_class_name_list) == 1:
+                continue
+
+            # (2) 进行Fama-MacBeth两次回归进行提纯
+
+            # (2.1) 根据回归最后的时间点找到滚动窗口时间段
+            regression_end_date_index = get_factor_data_date_list.index(regression_end_date)  # index是31，表示第32个周
+            # list后不包，所以要+1
+            regression_period = get_factor_data_date_list[
+                                regression_end_date_index - rolling_window + 1:regression_end_date_index + 1]
+
+            # (2.2) 构建第一次回归所需数据
+            first_regression_data = pd.DataFrame(index=regression_period, columns=lower_class_name_list)
+            for i in tempo_date_data.index:
+                factor_num = tempo_date_data.loc[i, '因子序号']
+                factor_stratification_num = tempo_date_data.loc[i, '档位']
+                first_regression_data[factor_num] = \
+                    factor_stratification_return[(sample_name, factor_num, factor_stratification_num)]['持仓期收益率'].loc[regression_period]
+
+            # (2.3) 第一阶段回归：回归取残差项
+            first_regression_residual = pd.DataFrame(index=regression_period, columns=lower_class_name_list)  # 残差数据
+            purified_factor_data = pd.DataFrame(index=regression_period, columns=lower_class_name_list)  # 因子减去残差得到提纯数据
+            # 保存一阶段回归详细结果，以便后续查看提纯情况
+            first_regression_result = pd.DataFrame(index=lower_class_name_list, columns=['Adj. R-squared', 'F值', 'F值显著性'])
+
+            for purified_factor in lower_class_name_list:
+                # 得到因子回归提纯后的残差
+                other_factors_list = [factor for factor in lower_class_name_list if factor not in [purified_factor]]
+                if regression_model == 'WLS':
+                    first_regression_model = sm.WLS(first_regression_data[purified_factor].astype(float),
+                                                    first_regression_data[other_factors_list].astype(float),
+                                                    weights=weight_dict['cos']).fit().get_robustcov_results()
+
+                first_regression_residual[purified_factor] = first_regression_model.resid
+                purified_factor_data[purified_factor] = \
+                    first_regression_data[purified_factor].astype(float) - first_regression_residual[purified_factor]
+
+                first_regression_result.loc[purified_factor, 'Adj. R-squared'] = format(first_regression_model.rsquared_adj,
+                                                                                        '.2%')
+                first_regression_result.loc[purified_factor, 'F值'] = format(first_regression_model.fvalue[0][0], '.2f')
+                first_regression_result.loc[purified_factor, 'F值显著性'] = format(first_regression_model.f_pvalue, '.3f')
+
+            # (2.4) 得到原收益率减去残差值的相关系数矩阵
+            within_purified_class_factor_corr[(class_name, regression_end_date)] = purified_factor_data.corr()
+
+            # (2.5) 第二阶段回归：使用残差值再进行一次单因子回归检验，使用原收益率减去残差值再进行一次单因子回归检验
+            second_regression_data = pd.DataFrame(index=regression_period, columns=['Alpha', 'Beta'])
+            second_regression_data['Alpha'] = 1
+            second_regression_data['Beta'] = index_return_df.loc[regression_period, sample_name + '收益率']
+
+            second_regression_result = pd.DataFrame(index=lower_class_name_list, columns=factor_test_info_list)
+
+            for purified_factor in lower_class_name_list:
+                if regression_model == 'WLS':
+                    second_regression_model = sm.WLS(purified_factor_data[purified_factor],
+                                                     second_regression_data[['Alpha', 'Beta']].astype(float),
+                                                     weights=weight_dict['cos']).fit().get_robustcov_results()
+
+                second_regression_result.loc[purified_factor] = \
+                    set_linear_regression_result(second_regression_model, factor_test_info_list, method='WLS')
+
+            # (2.6) 得到因子类型内提纯后的结果
+
+            # 挑选提纯后仍然显著的因子
+            significant_condition = (second_regression_result['Alpha p值'].astype(float) < 0.1) & \
+                                    (second_regression_result['Alpha'].astype(float) > 0)
+
+            significant_result = second_regression_result[significant_condition].sort_values(
+                by=['Adj. R-squared'], ascending=False).reset_index().rename(columns={'index': lower_class})
+
+            significant_result = tempo_date_data[required_factor_info_list].merge(
+                significant_result, on=[lower_class], how='right').sort_values(by=['Adj. R-squared'], ascending=False)
+
+            all_purified_data = pd.concat([all_purified_data, significant_result[required_factor_info_list + factor_test_info_list]])
+
+            # 挑选解释度最高的那个
+            most_explaination_result = significant_result.iloc[:1, :].copy()
+            most_significant_purified_data = pd.concat([most_significant_purified_data,
+                                                        most_explaination_result[required_factor_info_list + factor_test_info_list]])
+        print('完成因子提纯：' + purified_class + '(' + class_name + ')')
+
+    return all_purified_data, most_significant_purified_data, within_purified_class_factor_corr
+
+
+def purify_factor_number_in_factor_type(significant_factor_number, factor_stratification_return, index_return_df, regression_model_list,
+                                        rolling_window_list, get_factor_data_date_list, factor_category_dict, factor_type_dict):
+
+    factor_info_list = ['数据提取日','因子大类', '因子小类', '因子序号', '档位']
+    factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
+                             'Adj. R-squared']
+    all_info_list = factor_info_list + factor_test_info_list
+    MES_factor_number = {}  # Most Explaination Significant
+    all_factor_number_after_purified = {}
+    MES_factor_number_after_purified = {}
+
     for sample_name in sample_list:
 
-        for regression_method in regression_method_list:
+        for regression_model in regression_model_list:
 
             for rolling_window in rolling_window_list:
 
+                tempo_selected_significant_factor = significant_factor_number[(significant_factor_number['回归模型'] == regression_model) &
+                                                                              (significant_factor_number['滚动窗口'] == rolling_window)].copy()
 
-                if regression_method == 'WLS':
-                    weight_dict = {'cos': [1 / (math.cos(x) / sum([math.cos(x) for x in np.linspace(0, math.pi / 2, rolling_window)]))
-                                           for x in np.linspace(0, math.pi / 2, rolling_window)]}
+                # (1) 每期每个因子序号下解释度最高的那个Alpha显著为正的档位
+                MES_factor_number[(sample_name, regression_model, rolling_window)] = \
+                    tempo_selected_significant_factor.groupby(by=['数据提取日', '因子序号']).apply(
+                        lambda df: df[['档位'] + factor_test_info_list].sort_values(by='Adj. R-squared', ascending=False).iloc[0, :]).reset_index()
+                # 并入factor的信息
+                # MES_factor_number[(sample_name, regression_model, rolling_window)]['回归模型'] = regression_model
+                # MES_factor_number[(sample_name, regression_model, rolling_window)]['滚动窗口'] = rolling_window
+                MES_factor_number[(sample_name, regression_model, rolling_window)]['因子大类'] = \
+                    MES_factor_number[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
+                MES_factor_number[(sample_name, regression_model, rolling_window)]['因子小类'] = \
+                    MES_factor_number[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_type_dict)
 
-                for class_name in purified_class_name_list:
+                # (2) 在同一因子小类中，进行因子序号提纯
+                all_factor_number_after_purified[(sample_name, regression_model, rolling_window)], \
+                MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)], _  = \
+                    get_purified_factor(MES_factor_number[(sample_name, regression_model, rolling_window)],
+                                        purified_class='因子小类', lower_class='因子序号', sample_name=sample_name, regression_model=regression_model,
+                                        rolling_window=rolling_window, factor_stratification_return=factor_stratification_return,
+                                        index_return_df=index_return_df, get_factor_data_date_list=get_factor_data_date_list)
 
-                    all_purified_data[(sample_name, regression_method, rolling_window, class_name)] = \
-                        pd.DataFrame(columns=required_factor_info_list + factor_test_info_list)
-                    most_significant_purified_data[(sample_name, regression_method, rolling_window, class_name)] = \
-                        pd.DataFrame(columns=required_factor_info_list + factor_test_info_list)
+                all_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子大类'] = \
+                    all_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
+                all_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子小类'] = \
+                    all_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_type_dict)
+                MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子大类'] = \
+                    MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
+                MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子小类'] = \
+                    MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_type_dict)
 
-                    tempo_data = prior_purified_data[(prior_purified_data['回归方法'] == regression_method) &
-                                                     (prior_purified_data['滚动窗口'] == rolling_window) &
-                                                     (prior_purified_data[purified_class] == class_name)].copy()
+                all_factor_number_after_purified[(sample_name, regression_model, rolling_window)] = \
+                    all_factor_number_after_purified[(sample_name, regression_model, rolling_window)][all_info_list]
+                MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)] = \
+                    MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)][all_info_list]
 
-                    # 注意：此处直接忽略了没有显著因子的日期，只对存在显著因子的日期进行提纯
-                    tempo_regression_end_date_list = tempo_data['数据提取日'].unique().tolist()
 
-                    for regression_end_date in tempo_regression_end_date_list:
+                print('完成因子小类内提纯：' + '，'.join([sample_name, regression_model, str(rolling_window)]))
+            print('-----------------------------------')
 
-                        # (1) 根据回归最后的时间点找到该回归显著的因子，如果只有1个那么就不用提纯了
-                        tempo_date_data = tempo_data[tempo_data['数据提取日'] == regression_end_date].copy()
-                        lower_class_name_list = tempo_date_data[lower_class].tolist()  # 由于最底层只取最显著的那一档，所以每个因子序号/因子名称唯一
-                        if len(lower_class_name_list) == 1:
-                            continue
+    return all_factor_number_after_purified, MES_factor_number_after_purified
 
-                        # (2) 进行Fama-MacBeth两次回归进行提纯
 
-                        # (2.1) 根据回归最后的时间点找到滚动窗口时间段
-                        regression_end_date_index = get_factor_data_date_list.index(regression_end_date)  # index是31，表示第32个周
-                        # list后不包，所以要+1
-                        regression_period = get_factor_data_date_list[
-                                            regression_end_date_index - rolling_window + 1:regression_end_date_index + 1]
-
-                        # (2.2) 构建第一次回归所需数据
-                        first_regression_data = pd.DataFrame(index=regression_period, columns=lower_class_name_list)
-                        for i in tempo_date_data.index:
-                            factor_num = tempo_date_data.loc[i, '因子序号']
-                            factor_stratification_num = tempo_date_data.loc[i, '档位']
-                            first_regression_data[factor_num] = \
-                                factor_stratification_return[(sample_name, factor_num, factor_stratification_num)]['持仓期收益率'].loc[regression_period]
-
-                        # (2.3) 第一阶段回归：回归取残差项
-                        first_regression_residual = pd.DataFrame(index=regression_period, columns=lower_class_name_list)  # 残差数据
-                        purified_factor_data = pd.DataFrame(index=regression_period, columns=lower_class_name_list)  # 因子减去残差得到提纯数据
-                        # 保存一阶段回归详细结果，以便后续查看提纯情况
-                        first_regression_result = pd.DataFrame(index=lower_class_name_list, columns=['Adj. R-squared', 'F值', 'F值显著性'])
-
-                        for purified_factor in lower_class_name_list:
-                            # 得到因子回归提纯后的残差
-                            other_factors_list = [factor for factor in lower_class_name_list if factor not in [purified_factor]]
-                            if regression_method == 'WLS':
-                                first_regression_model = sm.WLS(first_regression_data[purified_factor].astype(float),
-                                                                first_regression_data[other_factors_list].astype(float),
-                                                                weights=weight_dict['cos']).fit().get_robustcov_results()
-
-                            first_regression_residual[purified_factor] = first_regression_model.resid
-                            purified_factor_data[purified_factor] = \
-                                first_regression_data[purified_factor].astype(float) - first_regression_residual[purified_factor]
-
-                            first_regression_result.loc[purified_factor, 'Adj. R-squared'] = format(first_regression_model.rsquared_adj,
-                                                                                                    '.2%')
-                            first_regression_result.loc[purified_factor, 'F值'] = format(first_regression_model.fvalue[0][0], '.2f')
-                            first_regression_result.loc[purified_factor, 'F值显著性'] = format(first_regression_model.f_pvalue, '.3f')
-
-                        # (2.4) 得到原收益率减去残差值的相关系数矩阵
-                        within_purified_class_factor_corr[(sample_name, regression_method, rolling_window, class_name, regression_end_date)] = \
-                            purified_factor_data.corr()
-
-                        # (2.5) 第二阶段回归：使用残差值再进行一次单因子回归检验，使用原收益率减去残差值再进行一次单因子回归检验
-                        second_regression_data = pd.DataFrame(index=regression_period, columns=['Alpha', 'Beta'])
-                        second_regression_data['Alpha'] = 1
-                        second_regression_data['Beta'] = index_return_df.loc[regression_period, sample_name + '收益率']
-
-                        second_regression_result = pd.DataFrame(index=lower_class_name_list, columns=factor_test_info_list)
-
-                        for purified_factor in lower_class_name_list:
-                            if regression_method == 'WLS':
-                                second_regression_model = sm.WLS(purified_factor_data[purified_factor],
-                                                                 second_regression_data[['Alpha', 'Beta']].astype(float),
-                                                                 weights=weight_dict['cos']).fit().get_robustcov_results()
-
-                            second_regression_result.loc[purified_factor] = \
-                                set_linear_regression_result(second_regression_model, factor_test_info_list, method='WLS')
-
-                        # (2.6) 得到因子类型内提纯后的结果
-
-                        # 挑选提纯后仍然显著的因子
-                        significant_condition = (second_regression_result['Alpha p值'].astype(float) < 0.1) & \
-                                                (second_regression_result['Alpha'].astype(float) > 0)
-
-                        significant_result = second_regression_result[significant_condition].sort_values(
-                            by=['Adj. R-squared'], ascending=False).reset_index().rename(columns={'index': lower_class})
-
-                        significant_result = tempo_date_data[required_factor_info_list].merge(
-                            significant_result, on=[lower_class], how='right').sort_values(by=['Adj. R-squared'], ascending=False)
-
-                        all_purified_data[sample_name][regression_method][rolling_window][class_name] = \
-                            pd.concat([all_purified_data[sample_name][regression_method][rolling_window][class_name],
-                                       significant_result[required_factor_info_list + factor_test_info_list]])
-
-                        # 挑选解释度最高的那个
-                        most_explaination_result = significant_result.iloc[:1, :].copy()
-                        most_significant_purified_data[(sample_name, regression_method, rolling_window, class_name)] = \
-                            pd.concat([most_significant_purified_data[(sample_name, regression_method, rolling_window, class_name)],
-                                       most_explaination_result[required_factor_info_list + factor_test_info_list]])
-
-                    print('完成' + purified_class + '内提纯：' + '，'.join([sample_name, regression_method, str(rolling_window), class_name]))
-
-                print('----------------------------------')
-
-    return all_purified_data, most_significant_purified_data, within_purified_class_factor_corr
+def purify_factor_type(MES_purified_factor_number, factor_stratification_return, index_return_df, regression_model_list, rolling_window_list,
+                       get_factor_data_date_list, factor_category_dict, factor_type_dict):
 
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
@@ -777,7 +804,7 @@ clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe =
 # ----------------------------------------------------------分组构建（开始）----------------------------------------------------------------------------
 
 print('-----------------------------------------------------------------------')
-print('开始根据因子生成组合。')
+print('开始根据因子生成组合')
 
 factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=['申万A股'], factor_list=factor_list,
                                                             stratification_num=stratification_number, quantile_dict=quantile_dict)
@@ -785,7 +812,7 @@ factor_stratification_data = get_factor_stratification_data(clean_data_after_out
 # ****************************************************************************************************************************************************
 
 print('-----------------------------------------------------------------------')
-print('开始计算分层收益率。')
+print('开始计算分层收益率')
 
 factor_stratification_return = get_factor_stratification_return(factor_stratification_data, stock_return_df, sample_list=['申万A股'],
                                                                 factor_list=factor_list, startification_num=stratification_number,
@@ -796,11 +823,11 @@ factor_stratification_return = get_factor_stratification_return(factor_stratific
 # ----------------------------------------------------------时间序列回归计算alpha、beta（开始）----------------------------------------------------------
 
 print('-----------------------------------------------------------------------')
-print('开始进行单因子检测。')
+print('开始进行单因子检测')
 
 factor_test_result, _ = get_factor_test_result(factor_stratification_return, index_return_df, sample_list=['申万A股'], factor_list=factor_list,
                                                get_factor_data_date_list=get_factor_data_date_list,
-                                               regression_method_list=['WLS'], quantile_dict=quantile_dict, rolling_window_list=[32],
+                                               regression_model_list=['WLS'], quantile_dict=quantile_dict, rolling_window_list=[32],
                                                stratification_num=stratification_number)
 
 
@@ -811,44 +838,29 @@ factor_test_result, _ = get_factor_test_result(factor_stratification_return, ind
 # 1. 小类因子收益率
 
 print('-----------------------------------------------------------------------')
-print('保存因子序号各档收益率数据。')
+print('保存因子序号各档收益率数据')
 
 factor_stratification_hp_return = get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=['申万A股'],
                                                                       factor_list=factor_list, stratification_num=stratification_number,
                                                                       quantile_dict=quantile_dict, factor_name_dict=factor_name_dict)
 
-# 2. 小类因子Alpha(不管显著性)，顺便筛选出p值小于0.1的因子
+# 2. 筛选出显著的因子序号
 
 print('-----------------------------------------------------------------------')
-print('保存因子序号各档回归检测结果，筛选有效因子。')
-all_factor_number_regression_test_result, significant_factor_number = \
-    get_significant_factor_number(factor_test_result, sample_list=['申万A股'], factor_list=factor_list, regression_method_list=['WLS'],
-                                  rolling_window_list=[32], stratification_num=stratification_number, quantile_dict=quantile_dict,
-                                  factor_category_dict=factor_category_dict, factor_type_dict=factor_type_dict, factor_name_dict=factor_name_dict)
+print('保存因子序号各档回归检测结果，筛选有效因子')
+all_factor_number_regression_test_result = transform_dict_to_dataframe(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
+significant_factor_number = all_factor_number_regression_test_result[(all_factor_number_regression_test_result['Alpha p值'].astype(float) < 0.1) & \
+                            (all_factor_number_regression_test_result['Alpha'].astype(float) > 0)].copy()
+significant_factor_number.index = range(significant_factor_number.shape[0])
+print('完成：保存因子序号各档回归检测结果，筛选有效因子')
 
-# 3. 筛选出每个截面的显著因子
-factor_info_list = ['数据提取日', '回归方法', '滚动窗口', '因子大类', '因子小类', '因子序号', '档位']
-factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
-                         'Adj. R-squared']
+# 3. 对因子序号、因子小类进行提纯
+print('-----------------------------------------------------------------------')
+print('开始因子提纯')
 
-for regression_method in ['WLS']:
-
-    for rolling_window in rolling_window_list:
-
-        tempo_selected_significant_factor = significant_factor_number[(significant_factor_number['回归方法'] == regression_method) &
-                                                                (significant_factor_number['滚动窗口'] == rolling_window)].copy()
-
-        # (1) 挑选解释度最高的那个档位最为该因子序号的显著因子，代表该因子的显著能力
-        most_significant_factor_number = tempo_selected_significant_factor.groupby(by=factor_info_list[:-1]).apply(
-            lambda df: df[[factor_info_list[-1]] + factor_test_info_list].sort_values(by='Adj. R-squared', ascending=False).iloc[0, :]).reset_index()
-
-        # (2) 在同一因子小类中，进行因子序号提纯
-        all_purified_factor_type, most_explanation_purified_factor_type, all_purified_factor_number_corr  = \
-            get_purified_factor(most_significant_factor_number, purified_class='因子小类', lower_class='因子序号',
-                                regression_method_list=['WLS'], rolling_window_list=[32], factor_stratification_return=factor_stratification_return,
-                                index_return_df=index_return_df, get_factor_data_date_list=get_factor_data_date_list)
-
-        # (3) 在同一因子大类中，进行因子小类提纯
+all_factor_number_after_purified, MES_factor_number_after_purified = \
+    purify_factor_number_in_factor_type(significant_factor_number, factor_stratification_return, index_return_df, ['WLS'], [32],
+                                        get_factor_data_date_list, factor_category_dict, factor_type_dict)
 
 # 先把dict的存储方式修改一下
 
