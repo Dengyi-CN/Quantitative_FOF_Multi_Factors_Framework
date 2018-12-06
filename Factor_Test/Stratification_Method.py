@@ -210,26 +210,26 @@ def set_factor_info(regression_result, factor_num, factor_category, factor_type,
 def data_cleaning(data, sample_list=None, factor_list=None, kicked_sector_list=None, go_public_days=250, data_processing_base_columns=None):
     # 1. 数据清洗
     # 1.1 剔除某些行业
-    raw_data_step1 = data[data['sectorname'].apply(lambda s: s not in kicked_sector_list)].copy()
+    data = data[data['sectorname'].apply(lambda s: s not in kicked_sector_list)]
 
     # 1.2 剔除天软的脏数据：报告期为1900-12-31、以及一些莫名的日期
 
-    raw_data_step2 = raw_data_step1[raw_data_step1['财务数据最新报告期'] != '1900-12-31'].copy()
-    raw_data_step2 = raw_data_step2[raw_data_step2['数据提取日'].apply(lambda date: date in get_factor_data_date_list)].copy()
+    data = data[data['财务数据最新报告期'] != '1900-12-31']
+    data = data[data['数据提取日'].apply(lambda date: date in get_factor_data_date_list)]
 
     # 1.3 剔除ST、PT股票，以及当期停牌的股票
 
-    raw_data_step3 = raw_data_step2[(raw_data_step2['是否st'] == 0) & (raw_data_step2['是否pt'] == 0) & (raw_data_step2['是否停牌'] == 0)].copy()
+    data = data[(data['是否st'] == 0) & (data['是否pt'] == 0) & (data['是否停牌'] == 0)]
 
     # 1.4 剔除每个截面数据量少于95%的因子数据
 
-    raw_data_step4 = raw_data_step3.copy()
+    # raw_data_step4 = raw_data_step3
 
     # 1.5 剔除次新股
-    raw_data_step5 = raw_data_step4.groupby(by=['数据提取日']).apply(lambda df: df[df['上市天数'] > go_public_days]).copy()
+    data = data.groupby(by=['数据提取日']).apply(lambda df: df[df['上市天数'] > go_public_days])
 
     # 1.6 取得干净数据
-    clean_data = raw_data_step5[data_processing_base_columns + [sample_name + '成分股' for sample_name in sample_list] + factor_list].copy()
+    clean_data = data[data_processing_base_columns + [sample_name + '成分股' for sample_name in sample_list] + factor_list]
     clean_data.index = range(clean_data.shape[0])
 
     return clean_data
@@ -836,26 +836,63 @@ def purify_factor_type_in_factor_category(MES_purified_factor_number, factor_str
     return all_factor_type_after_purified, MES_factor_after_purified
 
 
+def optimize_df_data_ram(data):
+    """
+    主要是将int、float、object等类型转变为小一点的类型
+    :param data:
+    :return:
+    """
+
+    copy_data = data.copy()
+    print('---------------------优化dataframe数据内存---------------------\n')
+    print('\t传入数据：' + ','.join([str(type) + '(' + str(num) + '列)' for type, num in data.get_dtype_counts().to_dict().items()]))
+    print('\t传入数据大小：' + "{:03.2f}MB".format(data.memory_usage(deep=True).sum() / 1024 ** 2))
+    print('\t正在优化数据结构及存储空间……')
+
+    if not copy_data.select_dtypes(include=['int']).empty:
+        copy_data[copy_data.select_dtypes(include=['int']).columns] = \
+            copy_data.select_dtypes(include=['int']).apply(pd.to_numeric, downcast='integer')  # 最小为int8
+
+    if not copy_data.select_dtypes(include=['float']).empty:
+        copy_data[copy_data.select_dtypes(include=['float']).columns] = \
+            copy_data.select_dtypes(include=['float']).apply(pd.to_numeric, downcast='float')  # 最小为float32
+
+    if not copy_data.select_dtypes(include=['object']).empty:
+        for col in copy_data.select_dtypes(include=['object']).columns:
+            num_unique_values = len(copy_data.select_dtypes(include=['object'])[col].unique())
+            num_total_values = len(copy_data.select_dtypes(include=['object'])[col])
+            if num_unique_values / num_total_values < 0.5:  # 因为是用字典存，所以重复率较高的数据才适合
+                copy_data.loc[:, col] = copy_data.select_dtypes(include=['object'])[col].astype('category')  # 将object转为catagory
+    print('\t优化后数据：' + ','.join([str(type) + '(' + str(num) + '列)' for type, num in copy_data.get_dtype_counts().to_dict().items()]))
+    print('\t优化后数据大小：' + "{:03.2f}MB".format(copy_data.memory_usage(deep=True).sum() / 1024 ** 2))
+    change_pct = (data.memory_usage(deep=True).sum() / 1024 ** 2) / (copy_data.memory_usage(deep=True).sum() / 1024 ** 2) - 1
+    print('\t数据存储优化幅度：' + format(change_pct, '.2%'))
+    print('\n---------------------优化dataframe数据内存---------------------')
+    return copy_data
+
+
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
 
 # ----------------------------------------------------------基础数据准备（开始）------------------------------------------------------------------------
 
-raw_data = pickle.load(open('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/weekly_core_factor_raw_data.dat', 'rb'))
+raw_data = pickle.load(open('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/天软下载数据/raw_data.dat', 'rb'))
 
-output_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子'
-factor_library = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/因子列表_核心驱动因子.xlsx')
+output_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/结果'
+factor_library = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/因子列表-初步检测.xlsx')
 get_factor_data_date_list = [date.strftime('%Y-%m-%d') for date in
                              pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/日期序列-周度.xlsx')['endt'].tolist()]
-rolling_window_list = [32, 52, 156, 260]
+# rolling_window_list = [32, 52, 156, 260]
+rolling_window_list = [32]
 sample_list = ['申万A股']
 # sample_list = ['申万A股', '沪深300', '中证500', '中证800']
 stratification_number = 10
 quantile_dict = {**{0: 'low'}, **{i: str(i + 1) for i in range(1, stratification_number - 1)}, **{stratification_number - 1: 'high'}}
 
-factor_list = factor_library['factor'].tolist()
-factor_name_dict = {factor_library.loc[i, 'factor']: factor_library.loc[i, 'name'] for i in range(factor_library.shape[0])}
-factor_type_dict = {factor_library.loc[i, 'factor']: factor_library.loc[i, 'type'] for i in range(factor_library.shape[0])}
-factor_category_dict = {factor_library.loc[i, 'factor']: factor_library.loc[i, 'category'] for i in range(factor_library.shape[0])}
+factor_list = factor_library['因子序号'].tolist()
+# factor_list = ['factor1']
+factor_name_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子名称'] for i in range(factor_library.shape[0])}
+factor_type_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子小类'] for i in range(factor_library.shape[0])}
+factor_category_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子大类'] for i in range(factor_library.shape[0])}
 
 base_info_columns_list = raw_data.columns[:23].tolist()
 base_info_data = raw_data[base_info_columns_list].copy()
@@ -863,7 +900,8 @@ index_return_list = ['申万行业收益率', '沪深300收益率', '中证500�
 yield_type_list = ['持仓期收益率'] + [index_name[:-3] + '相对' + index_name[-3:] for index_name in index_return_list[1:]]
 base_info_columns = base_info_columns_list + [index_name[:-3] + '相对' + index_name[-3:] for index_name in index_return_list[1:]]
 # 避免每个变量都保存一遍基础数据，释放内存
-data_processing_base_columns = ['数据提取日', 'stockid', '持仓期停牌天数占比']
+data_cleaning_base_columns = ['数据提取日', '财务数据最新报告期', 'stockid', 'sectorname', '是否st', '是否pt', '是否停牌', '上市天数', '持仓期停牌天数占比'] + \
+                             [sample_name + '成分股' for sample_name in sample_list] + factor_list
 
 # 计算指数收益率(因为不想另外再单独取指数的收益率，所以在天软中取基础数据的时候同时取了)
 index_return_df = pd.DataFrame(index=get_factor_data_date_list, columns=index_return_list[1:])
@@ -893,7 +931,7 @@ print('原始数据样本各期数量最大/最小值：' +
       format(raw_data.groupby(by=['数据提取日']).count()['stockid'].min(), '.0f') + '/' +
       format(raw_data.groupby(by=['数据提取日']).count()['stockid'].max(), '.0f'))
 
-clean_data = data_cleaning(raw_data, sample_list=['申万A股'], factor_list=factor_list,
+clean_data = data_cleaning(raw_data[data_cleaning_base_columns], sample_list=sample_list, factor_list=factor_list,
                            kicked_sector_list=['申万金融服务', '申万非银金融', '申万综合', '申万银行'],
                            go_public_days=250, data_processing_base_columns=['数据提取日', 'stockid', '持仓期停牌天数占比'])
 
