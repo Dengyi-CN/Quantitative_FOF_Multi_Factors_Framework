@@ -339,22 +339,24 @@ def data_processing(clean_data, sample_list=None, factor_list=None, factor_name_
             outlier_stock_dict = clean_data[['数据提取日', 'stockid', '持仓期停牌天数占比'] + [factor_name]].groupby(by=['数据提取日']).apply(
                 lambda df: get_outlier_stock_list(df, factor_name, method='winsorize'))
             tempo_factor_clean_data = clean_data.pivot_table(values=factor_name, index='数据提取日', columns='stockid')
+            tempo_factor_clean_data.columns = tempo_factor_clean_data.columns.astype(object)  # categorical columns不能以普通方式添加
 
             # 别问，下面这段代码暂时看上去是很屌的，看不懂就算了
             return_outlier = pd.DataFrame(outlier_stock_dict).apply(
-                lambda t: tempo_factor_clean_data.loc[t.name].loc[t[0][0]], axis=1).reset_index().melt(
+                lambda t: tempo_factor_clean_data.loc[t.name, t[0][0]], axis=1).reset_index().melt(
                 id_vars=['数据提取日'], var_name=['stockid'], value_name=factor_name).dropna()
             return_outlier['异常值类型'] = '收益端异常值'
 
             factor_data_outlier = pd.DataFrame(outlier_stock_dict).apply(
-                lambda t: tempo_factor_clean_data.loc[t.name].loc[t[0][1]], axis=1).reset_index().melt(
+                lambda t: tempo_factor_clean_data.loc[t.name, t[0][1]], axis=1).reset_index().melt(
                 id_vars=['数据提取日'], var_name=['stockid'], value_name=factor_name).dropna()
             factor_data_outlier['异常值类型'] = '因子端异常值'
             # 没错，就是上面这段
-            outlier_data_dict[(sample_name, factor_name)] = \
-                pd.concat([return_outlier, factor_data_outlier]).sort_values(by=['数据提取日', 'stockid']).reset_index(drop=True)
 
-            print('\t完成数据处理：' + factor_name + '(' + factor_name_dict[factor_name] + ')')
+            outlier_data_dict[(sample_name, factor_name)] = pd.concat([return_outlier, factor_data_outlier]).sort_values(
+                by=['数据提取日', 'stockid']).reset_index(drop=True)
+
+            print('\t完成数据处理：' + factor_name + '(' + factor_name_dict[factor_name] + ')\n')
         print(low_level_divided_str)
 
     print_high_level_divided_str(action_str)
@@ -948,7 +950,6 @@ def optimize_data_ram(data):
         print('\t数据存储优化幅度：' + format(change_pct, '.2%'))
 
     elif isinstance(data, dict):
-        print('\n---------------------优化dict数据内存开始---------------------\n')
         type_count = {}
         for key, df in data.items():
             for type, count in df.get_dtype_counts().to_dict().items():
