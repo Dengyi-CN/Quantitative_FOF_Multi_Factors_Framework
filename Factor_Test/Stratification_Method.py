@@ -1,3 +1,4 @@
+import sys
 import warnings
 warnings.filterwarnings("ignore")
 import pandas as pd
@@ -18,8 +19,31 @@ plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus'] = False
 import seaborn as sns
 sns.set_context(rc={'figure.figsize': (12, 7)})
-
 # ----------------------------------------------------------函数（开始）-------------------------------------------------------------------------------
+low_level_divided_str = '{0: >{width}}'.format('', width=20) + '{0:*>{width}}'.format('', width=40) + '{0: >{width}}'.format('', width=20)
+
+
+def print_high_level_divided_str(str):
+    print('\n' + '{0:—>{width}}'.format(str, width=40) + '{0:->{width}}'.format('', width=40 - len(str)) + '\n')
+
+
+def get_outlier_stock_list(factor_data, factor_name, method='winsorize'):
+    independent_var_outlier_index_list = factor_data[factor_data['持仓期停牌天数占比'] >= 0.1].index.tolist()
+    independent_var_outlier_stock_list = factor_data.loc[independent_var_outlier_index_list, 'stockid'].tolist()
+
+    if method == 'median':
+        Dm = factor_data[factor_name].median()
+        Dm1 = abs(factor_data[factor_name] - Dm).median()
+        outlier_stock_list = factor_data[(factor_data[factor_name] > (Dm + 5 * Dm1)) |
+                                         (factor_data[factor_name] < (Dm - 5 * Dm1))]['stockid'].tolist()
+    elif method == 'winsorize':
+        outlier_index_list = \
+            pd.Series(factor_data[factor_name].sort_values().iloc[0:factor_data[factor_name].shape[0] // 100].index).sort_values().tolist()
+        outlier_index_list += \
+            pd.Series(factor_data[factor_name].sort_values().iloc[-factor_data[factor_name].shape[0] // 100:].index).sort_values().tolist()
+        outlier_stock_list = factor_data.loc[outlier_index_list, 'stockid'].tolist()
+
+    return independent_var_outlier_stock_list, outlier_stock_list
 
 
 def drop_outlier_and_standardization(factor_data, factor_name, drop_outlier_method='winsorize', standardization=False,
@@ -134,14 +158,14 @@ def constant_test(time_series_data):
 def set_linear_regression_result(regression_result, result_content_list, method='OLS'):
     if (method == 'OLS') | (method == 'WLS'):
         result = pd.Series(index=result_content_list)
-        result.loc['Adj. R-squared'] = format(regression_result.rsquared_adj, '.2%')
+        result.loc['Adj. R-squared'] = round(regression_result.rsquared_adj, 4)
     elif method == 'RLM':
         result = pd.Series(index=result_content_list)
 
-    result.loc[['Alpha', 'Beta']] = [format(value, '.3f') for value in list(regression_result.params)]
-    result.loc[['Alpha t值', 'Beta t值']] = [format(value, '.3f') for value in list(regression_result.tvalues)]
-    result.loc[['Alpha p值', 'Beta p值']] = [format(value, '.3f') for value in list(regression_result.pvalues)]
-    result.loc[['Alpha标准误', 'Beta标准误']] = [format(value, '.5f') for value in list(regression_result.bse)]
+    result.loc[['Alpha', 'Beta']] = [round(value, 3) for value in list(regression_result.params)]
+    result.loc[['Alpha t值', 'Beta t值']] = [round(value, 3) for value in list(regression_result.tvalues)]
+    result.loc[['Alpha p值', 'Beta p值']] = [round(value, 4) for value in list(regression_result.pvalues)]
+    result.loc[['Alpha标准误', 'Beta标准误']] = [round(value, 3) for value in list(regression_result.bse)]
     if regression_result.pvalues[0] <= 0.01:
         result.loc['Alpha显著性'] = '***'
     elif regression_result.pvalues[0] <= 0.05:
@@ -207,7 +231,16 @@ def set_factor_info(regression_result, factor_num, factor_category, factor_type,
     return significant_factor
 
 
-def data_cleaning(data, sample_list=None, factor_list=None, kicked_sector_list=None, go_public_days=250, data_processing_base_columns=None):
+def data_cleaning(data, sample_list=None, factor_list=None, kicked_sector_list=None, go_public_days=250, data_processing_base_columns=None,
+                  get_factor_data_date_list=None):
+    action_str = '数据清洗'
+    print_high_level_divided_str(action_str)
+
+    print('\t开始数据清洗…')
+    print('\t原始数据样本各期数量最大/最小值：' +
+          format(data.groupby(by=['数据提取日']).count()['stockid'].min(), '.0f') + '/' +
+          format(data.groupby(by=['数据提取日']).count()['stockid'].max(), '.0f'))
+
     # 1. 数据清洗
     # 1.1 剔除某些行业
     data = data[data['sectorname'].apply(lambda s: s not in kicked_sector_list)]
@@ -231,29 +264,32 @@ def data_cleaning(data, sample_list=None, factor_list=None, kicked_sector_list=N
     # 1.6 取得干净数据
     clean_data = data[data_processing_base_columns + [sample_name + '成分股' for sample_name in sample_list] + factor_list]
     clean_data.index = range(clean_data.shape[0])
+    print('\t数据清洗后样本各期数量最大/最小值：' +
+          format(clean_data.groupby(by=['数据提取日']).count()['stockid'].min(), '.0f') + '/' +
+          format(clean_data.groupby(by=['数据提取日']).count()['stockid'].max(), '.0f'))
+    clean_data = optimize_data_ram(clean_data)
 
+    print_high_level_divided_str(action_str)
     return clean_data
 
 
-def data_processing(clean_data, raw_data, sample_list=None, factor_list=None, factor_name_dict=None):
+def data_processing(clean_data, sample_list=None, factor_list=None, factor_name_dict=None):
+
+    action_str = '数据处理'
+    print_high_level_divided_str(action_str)
 
     factor_raw_data_describe = {}
     factor_clean_data_describe = {}
-    outlier_stock_dict = {}
     outlier_data_dict = {}
     clean_data_after_outlier = {}
-    clean_data_info_columns_list = clean_data.columns[:4].tolist()
 
     for sample_name in sample_list:
-
-        print('开始数据处理：' + sample_name)
 
         tempo_clean_data = clean_data[clean_data[sample_name + '成分股'] == 1].copy()
 
         for factor_name in factor_list:
 
-            print('----------------------------------')
-            print('开始数据处理：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')')
+            print('\t开始数据处理：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')')
 
             # (1) 对原始数据进行描述性统计
             factor_raw_data_describe[(sample_name, factor_name)] = \
@@ -270,13 +306,13 @@ def data_processing(clean_data, raw_data, sample_list=None, factor_list=None, fa
                 tempo_clean_data[['数据提取日'] + [factor_name]].groupby(by=['数据提取日']).apply(
                     lambda df: df[factor_name].dropna().shape[0] / df[factor_name].shape[0])
 
-            print('数据处理前样本最大/最小数量：' +
+            print('\t数据处理前样本最大/最小数量：' +
                   format(factor_raw_data_describe[(sample_name, factor_name)]['count'].min(), '.0f') + '/' +
                   format(factor_raw_data_describe[(sample_name, factor_name)]['count'].max(), '.0f'))
 
             # (2) 对数据进行处理：去异常值、标准化及填0（可选）
             clean_data_after_outlier[(sample_name, factor_name)] = \
-                tempo_clean_data[data_processing_base_columns + [factor_name]].groupby(by=['数据提取日']).apply(
+                tempo_clean_data[['数据提取日', 'stockid', '持仓期停牌天数占比'] + [factor_name]].groupby(by=['数据提取日']).apply(
                     lambda df: drop_outlier_and_standardization(df, factor_name, drop_outlier_method='winsorize', standardization=False))[
                     ['数据提取日', 'stockid'] + [factor_name]]
 
@@ -293,34 +329,43 @@ def data_processing(clean_data, raw_data, sample_list=None, factor_list=None, fa
                 clean_data_after_outlier[(sample_name, factor_name)][['数据提取日'] + [factor_name]].groupby(by=['数据提取日']).apply(
                     lambda df: df[factor_name].kurtosis())
 
-            print('数据处理后样本最大/最小数量：' +
+            print('\t数据处理后样本最大/最小数量：' +
                   format(factor_clean_data_describe[(sample_name, factor_name)]['count'].min(), '.0f') + '/' +
                   format(factor_clean_data_describe[(sample_name, factor_name)]['count'].max(), '.0f'))
 
             # (3) 保存异常值股票池及其数据
 
-            # print('保存异常值数据。')
-            # outlier_stock_dict[factor_name] = clean_data[clean_data_info_columns_list + [factor_name]].groupby(by=['数据提取日']).apply(
-            #     lambda df: get_outlier_stock_list(df, factor_name, method='winsorize'))
-            #
-            # outlier_data_dict[factor_name] = pd.DataFrame()
-            # for date in outlier_stock_dict[factor_name].index:
-            #     outlier_tempo_date_data = clean_data[clean_data['数据提取日'] == date][clean_data_info_columns_list + [factor_name]].copy()
-            #     outlier_tempo_date_data['异常值类型'] = np.nan
-            #     outlier_type_and_index = outlier_tempo_date_data['stockid'].apply(
-            #         lambda stock: '收益端异常值' if stock in outlier_stock_dict[factor_name].loc[date][0]
-            #         else('因子端异常值' if stock in outlier_stock_dict[factor_name].loc[date][1] else np.nan)).dropna()
-            #     outlier_tempo_date_data.loc[outlier_type_and_index.index, '异常值类型'] = outlier_type_and_index
-            #     output_columns = ['异常值类型'] + clean_data_info_columns_list + [factor_name]
-            #     outlier_data_dict[factor_name] = pd.concat([outlier_data_dict[factor_name],
-            #                                                 outlier_tempo_date_data.loc[outlier_type_and_index.index][output_columns]])
+            print('\t保存异常值数据…')
+            outlier_stock_dict = clean_data[['数据提取日', 'stockid', '持仓期停牌天数占比'] + [factor_name]].groupby(by=['数据提取日']).apply(
+                lambda df: get_outlier_stock_list(df, factor_name, method='winsorize'))
+            tempo_factor_clean_data = clean_data.pivot_table(values=factor_name, index='数据提取日', columns='stockid')
 
-            print('完成数据处理：' + factor_name + '(' + factor_name_dict[factor_name] + ')')
+            # 别问，下面这段代码暂时看上去是很屌的，看不懂就算了
+            return_outlier = pd.DataFrame(outlier_stock_dict).apply(
+                lambda t: tempo_factor_clean_data.loc[t.name].loc[t[0][0]], axis=1).reset_index().melt(
+                id_vars=['数据提取日'], var_name=['stockid'], value_name=factor_name).dropna()
+            return_outlier['异常值类型'] = '收益端异常值'
 
-    return clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe
+            factor_data_outlier = pd.DataFrame(outlier_stock_dict).apply(
+                lambda t: tempo_factor_clean_data.loc[t.name].loc[t[0][1]], axis=1).reset_index().melt(
+                id_vars=['数据提取日'], var_name=['stockid'], value_name=factor_name).dropna()
+            factor_data_outlier['异常值类型'] = '因子端异常值'
+            # 没错，就是上面这段
+            outlier_data_dict[(sample_name, factor_name)] = \
+                pd.concat([return_outlier, factor_data_outlier]).sort_values(by=['数据提取日', 'stockid']).reset_index(drop=True)
+
+            print('\t完成数据处理：' + factor_name + '(' + factor_name_dict[factor_name] + ')')
+        print(low_level_divided_str)
+
+    print_high_level_divided_str(action_str)
+    return clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe, outlier_data_dict
 
 
 def get_factor_stratification_data(data, sample_list=None, factor_list=None, stratification_num=10, quantile_dict=None):
+
+    action_str = '生成分档组合'
+    print_high_level_divided_str(action_str)
+
     cap_quantile_list = [(quantile + 1) / stratification_num for quantile in range(0, stratification_num)]
     floor_quantile_list = [quantile / stratification_num for quantile in range(0, stratification_num)]
 
@@ -330,8 +375,7 @@ def get_factor_stratification_data(data, sample_list=None, factor_list=None, str
 
     for sample_name in sample_list:
 
-        print('开始因子构建：' + sample_name)
-        print('----------------------------------')
+        print('\t开始因子构建：' + sample_name)
 
         for factor_name in factor_list:
 
@@ -346,23 +390,25 @@ def get_factor_stratification_data(data, sample_list=None, factor_list=None, str
 
                 min_count = factor_stratification_data[(sample_name, factor_name, quantile_dict[i])].groupby(by=['数据提取日']).count()['stockid'].min()
                 max_count = factor_stratification_data[(sample_name, factor_name, quantile_dict[i])].groupby(by=['数据提取日']).count()['stockid'].max()
-                print('完成因子构建：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')'
+                print('\t完成因子构建：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')'
                       + '-第' + quantile_dict[i] + '组' + '(' + format(min_count, '.0f') + '/' + format(max_count, '.0f') + ')')
-            print('----------------------------------')
+            print(low_level_divided_str)
 
-        print('-----------------------------------------------------------------------')
-
+    print_high_level_divided_str(action_str)
     return factor_stratification_data
 
 
 def get_factor_stratification_return(factor_stratification_data, stock_return_df, sample_list=None, factor_list=None, startification_num=10,
                                      quantile_dict=None, yield_type_list=None):
+
+    action_str = '计算分档收益率'
+    print_high_level_divided_str(action_str)
+
     factor_stratification_return = {}
     # 计算每个样本池
     for sample_name in sample_list:
 
-        print('开始计算分层收益率:' + sample_name)
-        print('-----------------------------------------------------------------------')
+        print('\t开始计算分层收益率:' + sample_name)
 
         for factor_name in factor_list:
 
@@ -373,20 +419,21 @@ def get_factor_stratification_return(factor_stratification_data, stock_return_df
 
                 factor_stratification_return[(sample_name, factor_name, quantile_dict[i])]['因子均值'] = \
                     factor_stratification_data[(sample_name, factor_name, quantile_dict[i])].groupby(by=['数据提取日']).apply(
-                        lambda df: df[factor_name].mean())
+                        lambda df: df[factor_name].mean()).astype('float32')
 
                 for yield_type in yield_type_list:
                     tempo_yield_data = factor_stratification_data[(sample_name, factor_name, quantile_dict[i])].merge(
                         stock_return_df[['数据提取日', 'stockid'] + [yield_type]], on=['数据提取日', 'stockid'], how='left').copy()
 
                     factor_stratification_return[(sample_name, factor_name, quantile_dict[i])][yield_type] = \
-                        tempo_yield_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type].mean())
+                        tempo_yield_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type].mean()).astype('float32')
 
-                    print('完成分组收益率计算：' + sample_name + '-' +
+                    print('\t完成分组收益率计算：' + sample_name + '-' +
                           factor_name + '(' + factor_name_dict[factor_name] + ')' + '-第' + quantile_dict[i] + '组-' + yield_type)
 
-            print('----------------------------------')
+            print(low_level_divided_str)
 
+    print_high_level_divided_str(action_str)
     return factor_stratification_return
 
 
@@ -394,14 +441,17 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                            get_factor_data_date_list=None, regression_model_list=None,
                            quantile_dict=None, rolling_window_list=None, stratification_num=10):
 
+    action_str = '单因子检测'
+    print_high_level_divided_str(action_str)
+
     ts_constant_test_result_dict = {}
     factor_test_result = {}
     result_content_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值']
+    result_value_content_list = ['Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值']
 
     for sample_name in sample_list:
 
-        print('开始单因子回归检测：' + sample_name)
-        print('-----------------------------------------------------------------------')
+        print('\t开始单因子回归检测：' + sample_name)
 
         for factor_name in factor_list:
 
@@ -472,18 +522,29 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                         factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])] = \
                             factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])].reset_index().rename(
                                 columns={'index': '数据提取日'})
-                        print('完成单因子回归检验：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')' +
+                        factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])][
+                            result_value_content_list] = \
+                            factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])][
+                                result_value_content_list].apply(pd.to_numeric, downcast='float')
+                        if (regression_model == 'OLS') | (regression_model == 'WLS'):
+                            factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])]['Adj. R-squared'] = \
+                                factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])][
+                                    'Adj. R-squared'].apply(pd.to_numeric, downcast='float')
+
+                        print('\t完成单因子回归检验：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')' +
                               '-第' + quantile_dict[i] + '组-窗口期' + str(rolling_window))
 
-            print('----------------------------------')
+            print(low_level_divided_str)
 
-    print('完成全部单因子回归检验。')
+    print_high_level_divided_str(action_str)
 
     return factor_test_result, ts_constant_test_result_dict
 
 
 def get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=None, factor_list=None,
                                         stratification_num=10, quantile_dict=None, factor_name_dict=None):
+    action_str = '因子序号各档收益保存'
+    print_high_level_divided_str(action_str)
 
     factor_stratification_hp_return = {}
 
@@ -505,15 +566,16 @@ def get_factor_stratification_hp_return(factor_stratification_return, market_mea
                     market_mean_return['持仓期收益率'], axis=0).rolling(2, axis=1).apply(lambda s: s[1] - s[0]).applymap(lambda v: v ** 2).mean(axis=1)
 
             factor_stratification_hp_return[(sample_name, factor_name)] = \
-                factor_stratification_hp_return[(sample_name, factor_name)].reset_index().rename(columns={'index': '数据提取日'})
-            print('保存各因子序号分档收益率，计算各档收益发散性指标：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')')
+                factor_stratification_hp_return[(sample_name, factor_name)].astype('float32').reset_index().rename(columns={'index': '数据提取日'})
+            print('\t保存各因子序号分档收益率，计算各档收益发散性指标：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')')
 
-        print('----------------------------------')
+        print(low_level_divided_str)
 
+    print_high_level_divided_str(action_str)
     return factor_stratification_hp_return
 
 
-def transform_dict_to_dataframe(dict_data, keys_column_name_list):
+def transform_dict_to_df(dict_data, keys_column_name_list):
     """
     用于将处理过程中保存的dict类型转为dataframe，因为在处理过程中用dict更加方便明了，但是在最终结果展示环节可能还需要dataframe的形式导出成excel
     :param dict_data:
@@ -521,6 +583,8 @@ def transform_dict_to_dataframe(dict_data, keys_column_name_list):
     那么该参数就是['股票池', '回归模型']
     :return: 将dict_data中的keys全部转换为了columns的dataframe
     """
+    action_str = '保存因子序号各档回归检测结果'
+    print_high_level_divided_str(action_str)
 
     dataframe_data = pd.DataFrame()
     for key_list, df_data in dict_data.items():
@@ -529,6 +593,7 @@ def transform_dict_to_dataframe(dict_data, keys_column_name_list):
         dataframe_data = pd.concat([dataframe_data, df_data])
     dataframe_data.index = range(dataframe_data.shape[0])
 
+    print_high_level_divided_str(action_str)
     return dataframe_data
 
 
@@ -547,7 +612,6 @@ def get_purified_factor(prior_purified_data, purified_class=None, lower_class=No
     :param get_factor_data_date_list:
     :return:
     """
-
     # 变量声明
     within_purified_class_factor_corr = {}  # 提纯后，该类别内所有纯净小类因子的相关系数
 
@@ -679,6 +743,10 @@ def get_purified_factor(prior_purified_data, purified_class=None, lower_class=No
 def get_MES_factor_stratification_number_in_factor_number(all_factor_stratification_number_regression_test_result,
                                                           sample_list, regression_model_list, rolling_window_list,
                                                           factor_category_dict, factor_type_dict):
+
+    action_str = '因子序号内筛选MSE'
+    print_high_level_divided_str(action_str)
+
     MES_factor_stratification_number = {}
     factor_info_list = ['因子大类', '因子小类', '因子序号', '档位']
     factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
@@ -714,6 +782,7 @@ def get_MES_factor_stratification_number_in_factor_number(all_factor_stratificat
                 MES_factor_stratification_number[(sample_name, regression_model, rolling_window)] = \
                     MES_factor_stratification_number[(sample_name, regression_model, rolling_window)][all_info_list]
 
+    print_high_level_divided_str(action_str)
     return MES_factor_stratification_number
 
 
@@ -732,6 +801,8 @@ def purify_factor_number_in_factor_type(MES_factor_stratification_number, factor
     :param factor_type_dict:
     :return:参数1是提纯后仍显著的所有因子序号，参数2是提纯后仍显著的Adj. R-squared最高的那个因子序号
     """
+    action_str = '因子小类内提纯'
+    print_high_level_divided_str(action_str)
 
     factor_info_list = ['数据提取日','因子大类', '因子小类', '因子序号', '档位']
     factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
@@ -769,10 +840,10 @@ def purify_factor_number_in_factor_type(MES_factor_stratification_number, factor
                 MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)] = \
                     MES_factor_number_after_purified[(sample_name, regression_model, rolling_window)][all_info_list]
 
+                print('\t完成因子小类内提纯：' + '，'.join([sample_name, regression_model, str(rolling_window)]))
+            print(low_level_divided_str)
 
-                print('完成因子小类内提纯：' + '，'.join([sample_name, regression_model, str(rolling_window)]))
-            print('-----------------------------------')
-
+    print_high_level_divided_str(action_str)
     return all_factor_number_after_purified, MES_factor_number_after_purified
 
 
@@ -791,6 +862,8 @@ def purify_factor_type_in_factor_category(MES_purified_factor_number, factor_str
     :param factor_category_dict:
     :return:
     """
+    action_str = '因子大类内提纯'
+    print_high_level_divided_str(action_str)
 
     factor_info_list = ['数据提取日', '因子大类', '因子小类', '因子序号', '档位']
     factor_test_info_list = ['Alpha显著性', 'Alpha', 'Alpha t值', 'Alpha标准误', 'Alpha p值', 'Beta显著性', 'Beta', 'Beta t值', 'Beta标准误', 'Beta p值',
@@ -830,66 +903,140 @@ def purify_factor_type_in_factor_category(MES_purified_factor_number, factor_str
                 MES_factor_after_purified[(sample_name, regression_model, rolling_window)] = \
                     MES_factor_after_purified[(sample_name, regression_model, rolling_window)][all_info_list]
 
-                print('完成因子大类内提纯：' + '，'.join([sample_name, regression_model, str(rolling_window)]))
-            print('-----------------------------------')
+                print('\t完成因子大类内提纯：' + '，'.join([sample_name, regression_model, str(rolling_window)]))
+
+            print(low_level_divided_str)
+
+    print_high_level_divided_str(action_str)
 
     return all_factor_type_after_purified, MES_factor_after_purified
 
 
-def optimize_df_data_ram(data):
+def optimize_data_ram(data):
     """
     主要是将int、float、object等类型转变为小一点的类型
     :param data:
     :return:
     """
+    action_str = '优化变量存储结构'
+    print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
 
-    copy_data = data.copy()
-    print('---------------------优化dataframe数据内存---------------------\n')
-    print('\t传入数据：' + ','.join([str(type) + '(' + str(num) + '列)' for type, num in data.get_dtype_counts().to_dict().items()]))
-    print('\t传入数据大小：' + "{:03.2f}MB".format(data.memory_usage(deep=True).sum() / 1024 ** 2))
-    print('\t正在优化数据结构及存储空间……')
+    if isinstance(data, pd.DataFrame):
 
-    if not copy_data.select_dtypes(include=['int']).empty:
-        copy_data[copy_data.select_dtypes(include=['int']).columns] = \
-            copy_data.select_dtypes(include=['int']).apply(pd.to_numeric, downcast='integer')  # 最小为int8
+        print('\t传入数据：' + ','.join([str(type) + '(' + str(num) + '列)' for type, num in data.get_dtype_counts().to_dict().items()]))
+        before_memory = data.memory_usage(deep=True).sum() / 1024 ** 2
+        print('\t传入数据大小：' + "{:03.2f}MB".format(before_memory))
+        print('\t正在优化数据结构及存储空间……')
 
-    if not copy_data.select_dtypes(include=['float']).empty:
-        copy_data[copy_data.select_dtypes(include=['float']).columns] = \
-            copy_data.select_dtypes(include=['float']).apply(pd.to_numeric, downcast='float')  # 最小为float32
+        if not data.select_dtypes(include=['int']).empty:
+            data[data.select_dtypes(include=['int']).columns] = \
+                data.select_dtypes(include=['int']).apply(pd.to_numeric, downcast='integer')  # 最小为int8
 
-    if not copy_data.select_dtypes(include=['object']).empty:
-        for col in copy_data.select_dtypes(include=['object']).columns:
-            num_unique_values = len(copy_data.select_dtypes(include=['object'])[col].unique())
-            num_total_values = len(copy_data.select_dtypes(include=['object'])[col])
-            if num_unique_values / num_total_values < 0.5:  # 因为是用字典存，所以重复率较高的数据才适合
-                copy_data.loc[:, col] = copy_data.select_dtypes(include=['object'])[col].astype('category')  # 将object转为catagory
-    print('\t优化后数据：' + ','.join([str(type) + '(' + str(num) + '列)' for type, num in copy_data.get_dtype_counts().to_dict().items()]))
-    print('\t优化后数据大小：' + "{:03.2f}MB".format(copy_data.memory_usage(deep=True).sum() / 1024 ** 2))
-    change_pct = (data.memory_usage(deep=True).sum() / 1024 ** 2) / (copy_data.memory_usage(deep=True).sum() / 1024 ** 2) - 1
-    print('\t数据存储优化幅度：' + format(change_pct, '.2%'))
-    print('\n---------------------优化dataframe数据内存---------------------')
-    return copy_data
+        if not data.select_dtypes(include=['float']).empty:
+            data[data.select_dtypes(include=['float']).columns] = \
+                data.select_dtypes(include=['float']).apply(pd.to_numeric, downcast='float')  # 最小为float32
+
+        if not data.select_dtypes(include=['object']).empty:
+            for col in data.select_dtypes(include=['object']).columns:
+                num_unique_values = len(data.select_dtypes(include=['object'])[col].unique())
+                num_total_values = len(data.select_dtypes(include=['object'])[col])
+                if num_unique_values / num_total_values < 0.5:  # 因为是用字典存，所以重复率较高的数据才适合
+                    data.loc[:, col] = data.select_dtypes(include=['object'])[col].astype('category')  # 将object转为catagory
+        print('\t优化后数据：' + ','.join([str(type) + '(' + str(num) + '列)' for type, num in data.get_dtype_counts().to_dict().items()]))
+        print('\t优化后数据大小：' + "{:03.2f}MB".format(data.memory_usage(deep=True).sum() / 1024 ** 2))
+        change_pct = before_memory / (data.memory_usage(deep=True).sum() / 1024 ** 2) - 1
+        print('\t数据存储优化幅度：' + format(change_pct, '.2%'))
+
+    elif isinstance(data, dict):
+        print('\n---------------------优化dict数据内存开始---------------------\n')
+        type_count = {}
+        for key, df in data.items():
+            for type, count in df.get_dtype_counts().to_dict().items():
+                if type in type_count.keys():
+                    type_count[type] += count
+                else:
+                    type_count[type] = count
+        print('\t传入数据：' + ', '.join([str(type) + '(' + str(count) + ')' for type, count in type_count.items()]))
+        before_memory = sys.getsizeof(data) / 1024 ** 2
+        print('\t传入数据大小：' + "{:03.2f}MB".format(before_memory))
+
+        for key, df in data.items():
+
+            if not df.select_dtypes(include=['int']).empty:
+                df[df.select_dtypes(include=['int']).columns] = \
+                    df.select_dtypes(include=['int']).apply(pd.to_numeric, downcast='integer')  # 最小为int8
+
+            if not df.select_dtypes(include=['float']).empty:
+                df[df.select_dtypes(include=['float']).columns] = \
+                    df.select_dtypes(include=['float']).apply(pd.to_numeric, downcast='float')  # 最小为float32
+
+            if not df.select_dtypes(include=['object']).empty:
+                for col in df.select_dtypes(include=['object']).columns:
+                    num_unique_values = len(df.select_dtypes(include=['object'])[col].unique())
+                    num_total_values = len(df.select_dtypes(include=['object'])[col])
+                    if num_unique_values / num_total_values < 0.5:  # 因为是用字典存，所以重复率较高的数据才适合
+                        df.loc[:, col] = df.select_dtypes(include=['object'])[col].astype('category')  # 将object转为catagory
+            data[key] = df
+
+        type_count = {}
+        for key, df in data.items():
+            for type, count in df.get_dtype_counts().to_dict().items():
+                if type in type_count.keys():
+                    type_count[type] += count
+                else:
+                    type_count[type] = count
+        print('\t优化后数据：' + ', '.join([str(type) + '(' + str(count) + ')' for type, count in type_count.items()]))
+        after_memory = sys.getsizeof(data) / 1024 ** 2
+        print('\t优化后数据大小：' + "{:03.2f}MB".format(after_memory))
+        change_pct = before_memory / after_memory - 1
+        print('\t数据存储优化幅度：' + format(change_pct, '.2%'))
+
+    print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
+    return data
+
+
+def display_data_structure_info(data):
+    action_str = '数据内存查看'
+    print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
+
+    if isinstance(data, pd.DataFrame):
+        print('\t数据类型: ' + ', '.join([str(type) + '(' + str(count) + ')' for type, count in data.get_dtype_counts().to_dict().items()]))
+        print('\t数据大小: ' + "{:03.2f}MB".format(data.memory_usage(deep=True).sum() / 1024 ** 2))
+    elif isinstance(data, dict):
+        type_count = {}
+        for key, df in data.items():
+            for type, count in df.get_dtype_counts().to_dict().items():
+                if type in type_count.keys():
+                    type_count[type] += count
+                else:
+                    type_count[type] = count
+        print('\t数据类型: ' + ', '.join([str(type) + '(' + str(count) + ')' for type, count in type_count.items()]))
+        print('\t数据大小: ' + "{:03.2f}MB".format(sys.getsizeof(data) / 1024 ** 2))
+
+    print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
 
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
 
 # ----------------------------------------------------------基础数据准备（开始）------------------------------------------------------------------------
+action_str = '基础数据'
+print_high_level_divided_str(action_str)
 
+# 涉及url
 raw_data = pickle.load(open('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/天软下载数据/raw_data.dat', 'rb'))
-
 output_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/结果'
-factor_library = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/因子列表-初步检测.xlsx')
 get_factor_data_date_list = [date.strftime('%Y-%m-%d') for date in
                              pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/日期序列-周度.xlsx')['endt'].tolist()]
-# rolling_window_list = [32, 52, 156, 260]
-rolling_window_list = [32]
+factor_library = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/因子列表-初步检测.xlsx')
+monetary_fund_return = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/货币基金收益.xlsx', index_col=0)
+
+# 定义初始变量
+rolling_window_list = [32, 52, 156, 260]
 sample_list = ['申万A股']
-# sample_list = ['申万A股', '沪深300', '中证500', '中证800']
 stratification_number = 10
 quantile_dict = {**{0: 'low'}, **{i: str(i + 1) for i in range(1, stratification_number - 1)}, **{stratification_number - 1: 'high'}}
 
 factor_list = factor_library['因子序号'].tolist()
-# factor_list = ['factor1']
 factor_name_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子名称'] for i in range(factor_library.shape[0])}
 factor_type_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子小类'] for i in range(factor_library.shape[0])}
 factor_category_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子大类'] for i in range(factor_library.shape[0])}
@@ -904,85 +1051,62 @@ data_cleaning_base_columns = ['数据提取日', '财务数据最新报告期', 
                              [sample_name + '成分股' for sample_name in sample_list] + factor_list
 
 # 计算指数收益率(因为不想另外再单独取指数的收益率，所以在天软中取基础数据的时候同时取了)
-index_return_df = pd.DataFrame(index=get_factor_data_date_list, columns=index_return_list[1:])
-for date in get_factor_data_date_list:
-    index_return_df.loc[date] = raw_data[raw_data['数据提取日'] == date][index_return_list[1:]].iloc[0, :]
+index_return_df = raw_data.groupby('数据提取日').apply(lambda df: df[index_return_list[1:]].iloc[0, :])
 
 # 计算相对收益率(后续在天软中实现，同时保留指数的收益率和相对收益率)
 for index_name in index_return_list[1:]:
     raw_data[index_name[:-3] + '相对' + index_name[-3:]] = raw_data['持仓期收益率'] - raw_data[index_name]
 
-stock_return_df = raw_data[['数据提取日', 'stockid'] + yield_type_list].copy()
-
 # 计算市场平均收益率、中位数收益率
-market_mean_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].mean())
-market_median_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].median())
-
-# 货币基金收益率
-monetary_fund_return = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/货币基金收益.xlsx', index_col=0)
+market_mean_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].mean()).astype('float32')
+market_median_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].median()).astype('float32')
+print_high_level_divided_str(action_str)
 
 # ----------------------------------------------------------基础数据准备（结束）------------------------------------------------------------------------
 
 # ----------------------------------------------------------数据处理及分布描述（开始）-------------------------------------------------------------------
 
-print('-----------------------------------------------------------------------')
-print('开始数据清洗')
-print('原始数据样本各期数量最大/最小值：' +
-      format(raw_data.groupby(by=['数据提取日']).count()['stockid'].min(), '.0f') + '/' +
-      format(raw_data.groupby(by=['数据提取日']).count()['stockid'].max(), '.0f'))
-
 clean_data = data_cleaning(raw_data[data_cleaning_base_columns], sample_list=sample_list, factor_list=factor_list,
                            kicked_sector_list=['申万金融服务', '申万非银金融', '申万综合', '申万银行'],
-                           go_public_days=250, data_processing_base_columns=['数据提取日', 'stockid', '持仓期停牌天数占比'])
-
-print('数据清洗后样本各期数量最大/最小值：' +
-      format(clean_data.groupby(by=['数据提取日']).count()['stockid'].min(), '.0f') + '/' +
-      format(clean_data.groupby(by=['数据提取日']).count()['stockid'].max(), '.0f'))
-
-print('完成数据清洗')
+                           go_public_days=250, data_processing_base_columns=['数据提取日', 'stockid', '持仓期停牌天数占比'],
+                           get_factor_data_date_list=get_factor_data_date_list)
 
 # 2. 数据分布及异常值处理
 
-print('-----------------------------------------------------------------------')
-print('开始数据处理')
-
 # 2.1 数据分布和异常值数据
 
-clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe = \
-    data_processing(clean_data, raw_data, sample_list=['申万A股'], factor_list=factor_list, factor_name_dict=factor_name_dict)
-
+clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe, outlier_data = \
+    data_processing(clean_data, sample_list=['申万A股'], factor_list=factor_list, factor_name_dict=factor_name_dict)
+clean_data_after_outlier = optimize_data_ram(clean_data_after_outlier)
 
 # ----------------------------------------------------------数据处理及分布描述（结束）-------------------------------------------------------------------
 
 # ----------------------------------------------------------分组构建（开始）----------------------------------------------------------------------------
 
-print('-----------------------------------------------------------------------')
-print('开始根据因子生成组合')
-
 factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=['申万A股'], factor_list=factor_list,
                                                             stratification_num=stratification_number, quantile_dict=quantile_dict)
+factor_stratification_data = optimize_data_ram(factor_stratification_data)
 
 # ****************************************************************************************************************************************************
 
-print('-----------------------------------------------------------------------')
-print('开始计算分层收益率')
-
-factor_stratification_return = get_factor_stratification_return(factor_stratification_data, stock_return_df, sample_list=['申万A股'],
-                                                                factor_list=factor_list, startification_num=stratification_number,
-                                                                quantile_dict=quantile_dict, yield_type_list=['持仓期收益率'])
+factor_stratification_return = \
+    get_factor_stratification_return(factor_stratification_data, raw_data[['数据提取日', 'stockid'] + yield_type_list], sample_list=['申万A股'],
+                                     factor_list=factor_list, startification_num=stratification_number, quantile_dict=quantile_dict,
+                                     yield_type_list=['持仓期收益率'])
+factor_stratification_return = optimize_data_ram(factor_stratification_return)
 
 # ----------------------------------------------------------分组构建（结束）----------------------------------------------------------------------------
 
 # ----------------------------------------------------------时间序列回归计算alpha、beta（开始）----------------------------------------------------------
 
 print('-----------------------------------------------------------------------')
-print('开始进行单因子检测')
+print('开始进行单因子检测…')
 
 factor_test_result, _ = get_factor_test_result(factor_stratification_return, index_return_df, sample_list=['申万A股'], factor_list=factor_list,
                                                get_factor_data_date_list=get_factor_data_date_list,
                                                regression_model_list=['WLS'], quantile_dict=quantile_dict, rolling_window_list=[32],
                                                stratification_num=stratification_number)
-
+factor_test_result = optimize_data_ram(factor_test_result)
 
 # ----------------------------------------------------------时间序列回归计算alpha、beta（结束）----------------------------------------------------------
 
@@ -990,50 +1114,38 @@ factor_test_result, _ = get_factor_test_result(factor_stratification_return, ind
 
 # 1. 小类因子收益率
 
-print('-----------------------------------------------------------------------')
-print('保存因子序号各档收益率数据')
-
 factor_stratification_hp_return = get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=['申万A股'],
                                                                       factor_list=factor_list, stratification_num=stratification_number,
                                                                       quantile_dict=quantile_dict, factor_name_dict=factor_name_dict)
+factor_stratification_hp_return = optimize_data_ram(factor_stratification_hp_return)
+
 
 # 2. 将回归结果保存在一个完成的dataframe中，以便后续保存
 
-print('-----------------------------------------------------------------------')
-print('保存因子序号各档回归检测结果')
-
-factor_test_result_df = transform_dict_to_dataframe(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
-
-print('完成：保存因子序号各档回归检测结果')
+factor_test_result_df = transform_dict_to_df(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
+factor_test_result_df = optimize_data_ram(factor_test_result_df)
 
 # 3. 在显著的(Alpha为正且p值小于1)各档位中，暂时筛选出解释度最高的那个档位作为该因子序号的代表
-print('-----------------------------------------------------------------------')
-print('筛选解释度最高的有效因子序号档位')
 
 MES_factor_stratification_number = get_MES_factor_stratification_number_in_factor_number(
     factor_test_result_df, ['申万A股'], ['WLS'], [32], factor_category_dict, factor_type_dict)
-
-print('完成：筛选解释度最高的有效因子序号档位')
+MES_factor_stratification_number = optimize_data_ram(MES_factor_stratification_number)
 
 # 4. 对因子小类进行提纯
-print('-----------------------------------------------------------------------')
-print('开始因子小类提纯')
 
 all_factor_number_after_purified, MES_factor_number_after_purified = \
     purify_factor_number_in_factor_type(MES_factor_stratification_number, factor_stratification_return, index_return_df, ['申万A股'], ['WLS'], [32],
                                         get_factor_data_date_list, factor_category_dict, factor_type_dict)
-print('完成：因子小类提纯')
+all_factor_number_after_purified = optimize_data_ram(all_factor_number_after_purified)
+MES_factor_stratification_number = optimize_data_ram(MES_factor_number_after_purified)
 
 # 5. 对因子大类进行提纯
-
-print('-----------------------------------------------------------------------')
-print('开始因子大类提纯')
 
 all_factor_type_after_purified, MSE_factor_type_after_purified = \
     purify_factor_type_in_factor_category(MES_factor_number_after_purified, factor_stratification_return, index_return_df, ['申万A股'], ['WLS'], [32],
                                           get_factor_data_date_list, factor_category_dict)
-
-print('完成：因子大类提纯')
+all_factor_type_after_purified = optimize_data_ram(all_factor_type_after_purified)
+MSE_factor_type_after_purified = optimize_data_ram(MSE_factor_type_after_purified)
 
 # ----------------------------------------------------------显著因子挑选及所需存储数据（结束）------------------------------------------------------------
 
