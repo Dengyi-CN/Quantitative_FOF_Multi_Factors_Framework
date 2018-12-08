@@ -314,12 +314,20 @@ def data_processing(clean_data, sample_list=None, factor_list=None, factor_name_
             clean_data_after_outlier[(sample_name, factor_name)] = \
                 tempo_clean_data[['数据提取日', 'stockid', '持仓期停牌天数占比'] + [factor_name]].groupby(by=['数据提取日']).apply(
                     lambda df: drop_outlier_and_standardization(df, factor_name, drop_outlier_method='winsorize', standardization=False))[
-                    ['数据提取日', 'stockid'] + [factor_name]]
+                    ['数据提取日', 'stockid'] + [factor_name]].reset_index(drop=True)
 
-            clean_data_after_outlier[(sample_name, factor_name)].index = range(clean_data_after_outlier[(sample_name, factor_name)].shape[0])
+            # (3) 对缺数据的截面进行剔除，即保留截面数据大于多少的数据集
+            cross_section_data_coverage = clean_data_after_outlier[(sample_name, factor_name)][['数据提取日'] + [factor_name]].groupby(
+                by=['数据提取日']).count()
+
+            date_list = cross_section_data_coverage[cross_section_data_coverage[factor_name] >= 100].index.tolist()
+            clean_data_after_outlier[(sample_name, factor_name)] = clean_data_after_outlier[(sample_name, factor_name)][
+                clean_data_after_outlier[(sample_name, factor_name)]['数据提取日'].apply(lambda date: date in date_list)].reset_index(drop=True)
+            clean_data_after_outlier[(sample_name, factor_name)]['数据提取日'] = \
+                clean_data_after_outlier[(sample_name, factor_name)]['数据提取日'].astype(object)
 
             factor_clean_data_describe[(sample_name, factor_name)] = \
-                clean_data_after_outlier[(sample_name, factor_name)][['数据提取日'] + [factor_name]].groupby(by=['数据提取日']).apply(
+                clean_data_after_outlier[(sample_name, factor_name)].groupby(by=['数据提取日']).apply(
                     lambda df: df[factor_name].describe([0.05, 0.1, 0.3, 0.5, 0.7, 0.9, 0.95]))
 
             factor_clean_data_describe[(sample_name, factor_name)]['skewness'] = \
@@ -333,15 +341,14 @@ def data_processing(clean_data, sample_list=None, factor_list=None, factor_name_
                   format(factor_clean_data_describe[(sample_name, factor_name)]['count'].min(), '.0f') + '/' +
                   format(factor_clean_data_describe[(sample_name, factor_name)]['count'].max(), '.0f'))
 
-            # (3) 保存异常值股票池及其数据
+            # (4) 保存异常值股票池及其数据
 
             print('\t保存异常值数据…')
             outlier_stock_dict = clean_data[['数据提取日', 'stockid', '持仓期停牌天数占比'] + [factor_name]].groupby(by=['数据提取日']).apply(
                 lambda df: get_outlier_stock_list(df, factor_name, method='winsorize'))
-            tempo_factor_clean_data = clean_data.pivot_table(values=factor_name, index='数据提取日', columns='stockid')
+            tempo_factor_clean_data = clean_data.pivot(values=factor_name, index='数据提取日', columns='stockid')
             tempo_factor_clean_data.columns = tempo_factor_clean_data.columns.astype(object)  # categorical columns不能以普通方式添加
 
-            # 别问，下面这段代码暂时看上去是很屌的，看不懂就算了
             return_outlier = pd.DataFrame(outlier_stock_dict).apply(
                 lambda t: tempo_factor_clean_data.loc[t.name, t[0][0]], axis=1).reset_index().melt(
                 id_vars=['数据提取日'], var_name=['stockid'], value_name=factor_name).dropna()
@@ -351,7 +358,6 @@ def data_processing(clean_data, sample_list=None, factor_list=None, factor_name_
                 lambda t: tempo_factor_clean_data.loc[t.name, t[0][1]], axis=1).reset_index().melt(
                 id_vars=['数据提取日'], var_name=['stockid'], value_name=factor_name).dropna()
             factor_data_outlier['异常值类型'] = '因子端异常值'
-            # 没错，就是上面这段
 
             outlier_data_dict[(sample_name, factor_name)] = pd.concat([return_outlier, factor_data_outlier]).sort_values(
                 by=['数据提取日', 'stockid']).reset_index(drop=True)
@@ -1023,21 +1029,24 @@ def display_data_structure_info(data):
 action_str = '基础数据'
 print_high_level_divided_str(action_str)
 
-# 涉及url
-raw_data = pickle.load(open('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/天软下载数据/raw_data.dat', 'rb'))
-output_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/结果'
-get_factor_data_date_list = [date.strftime('%Y-%m-%d') for date in
-                             pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/日期序列-周度.xlsx')['endt'].tolist()]
-factor_library = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/因子列表-初步检测.xlsx')
-monetary_fund_return = pd.read_excel('/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/核心驱动因子/货币基金收益.xlsx', index_col=0)
+# 设置数据输入输出地址参数
+data_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/data'
+result_output_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/结果'
 
-# 定义初始变量
+# 设置检测参数
 rolling_window_list = [32, 52, 156, 260]
 sample_list = ['申万A股']
 stratification_number = 10
 quantile_dict = {**{0: 'low'}, **{i: str(i + 1) for i in range(1, stratification_number - 1)}, **{stratification_number - 1: 'high'}}
 
-factor_list = factor_library['因子序号'].tolist()
+# 得到初始数据
+raw_data = pickle.load(open(data_url + '/raw_data.dat', 'rb'))
+get_factor_data_date_list = [date.strftime('%Y-%m-%d') for date in pd.read_excel(data_url + '/日期序列-周度.xlsx')['endt'].tolist()]
+factor_library = pd.read_excel(data_url + '/因子列表-初步检测.xlsx')
+monetary_fund_return = pd.read_excel(data_url + '/货币基金收益.xlsx', index_col=0)
+
+# factor_list = factor_library['因子序号'].tolist()
+factor_list = ['factor45']
 factor_name_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子名称'] for i in range(factor_library.shape[0])}
 factor_type_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子小类'] for i in range(factor_library.shape[0])}
 factor_category_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子大类'] for i in range(factor_library.shape[0])}
