@@ -1025,28 +1025,25 @@ def display_data_structure_info(data):
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
 
+# 设置参数
+params_data_url = eval(input('请输入输入参数excel的地址：'))
+params_data = pd.read_excel(params_data_url, index_col=0)
+data_url = params_data.loc['data_url', '参数']
+rolling_window_list = eval(params_data.loc['rolling_window_list', '参数'])
+sample_list = eval(params_data.loc['sample_list', '参数'])
+stratification_number = params_data.loc['stratification_number', '参数']
+
 # ----------------------------------------------------------基础数据准备（开始）------------------------------------------------------------------------
 action_str = '基础数据'
 print_high_level_divided_str(action_str)
-
-# 设置数据输入输出地址参数
-data_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/data'
-result_output_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/结果'
-
-# 设置检测参数
-rolling_window_list = [32, 52, 156, 260]
-sample_list = ['申万A股']
-stratification_number = 10
-quantile_dict = {**{0: 'low'}, **{i: str(i + 1) for i in range(1, stratification_number - 1)}, **{stratification_number - 1: 'high'}}
-
 # 得到初始数据
 raw_data = pickle.load(open(data_url + '/raw_data.dat', 'rb'))
 get_factor_data_date_list = [date.strftime('%Y-%m-%d') for date in pd.read_excel(data_url + '/日期序列-周度.xlsx')['endt'].tolist()]
 factor_library = pd.read_excel(data_url + '/因子列表-初步检测.xlsx')
 monetary_fund_return = pd.read_excel(data_url + '/货币基金收益.xlsx', index_col=0)
+quantile_dict = {**{0: 'low'}, **{i: str(i + 1) for i in range(1, stratification_number - 1)}, **{stratification_number - 1: 'high'}}
 
-# factor_list = factor_library['因子序号'].tolist()
-factor_list = ['factor45']
+factor_list = factor_library['因子序号'].tolist()
 factor_name_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子名称'] for i in range(factor_library.shape[0])}
 factor_type_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子小类'] for i in range(factor_library.shape[0])}
 factor_category_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子大类'] for i in range(factor_library.shape[0])}
