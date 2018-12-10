@@ -1029,8 +1029,9 @@ def display_data_structure_info(data):
 params_data_url = eval(input('请输入输入参数excel的地址：'))
 params_data = pd.read_excel(params_data_url, index_col=0)
 data_url = params_data.loc['data_url', '参数']
-rolling_window_list = eval(params_data.loc['rolling_window_list', '参数'])
 sample_list = eval(params_data.loc['sample_list', '参数'])
+regression_model_list = eval(params_data.loc['regression_model_list', '参数'])
+rolling_window_list = eval(params_data.loc['rolling_window_list', '参数'])
 stratification_number = params_data.loc['stratification_number', '参数']
 
 # ----------------------------------------------------------基础数据准备（开始）------------------------------------------------------------------------
@@ -1083,21 +1084,21 @@ clean_data = data_cleaning(raw_data[data_cleaning_base_columns], sample_list=sam
 # 2.1 数据分布和异常值数据
 
 clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe, outlier_data = \
-    data_processing(clean_data, sample_list=['申万A股'], factor_list=factor_list, factor_name_dict=factor_name_dict)
+    data_processing(clean_data, sample_list=sample_list, factor_list=factor_list, factor_name_dict=factor_name_dict)
 clean_data_after_outlier = optimize_data_ram(clean_data_after_outlier)
 
 # ----------------------------------------------------------数据处理及分布描述（结束）-------------------------------------------------------------------
 
 # ----------------------------------------------------------分组构建（开始）----------------------------------------------------------------------------
 
-factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=['申万A股'], factor_list=factor_list,
+factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=sample_list, factor_list=factor_list,
                                                             stratification_num=stratification_number, quantile_dict=quantile_dict)
 factor_stratification_data = optimize_data_ram(factor_stratification_data)
 
 # ****************************************************************************************************************************************************
 
 factor_stratification_return = \
-    get_factor_stratification_return(factor_stratification_data, raw_data[['数据提取日', 'stockid'] + yield_type_list], sample_list=['申万A股'],
+    get_factor_stratification_return(factor_stratification_data, raw_data[['数据提取日', 'stockid'] + yield_type_list], sample_list=sample_list,
                                      factor_list=factor_list, startification_num=stratification_number, quantile_dict=quantile_dict,
                                      yield_type_list=['持仓期收益率'])
 factor_stratification_return = optimize_data_ram(factor_stratification_return)
@@ -1109,9 +1110,10 @@ factor_stratification_return = optimize_data_ram(factor_stratification_return)
 print('-----------------------------------------------------------------------')
 print('开始进行单因子检测…')
 
-factor_test_result, _ = get_factor_test_result(factor_stratification_return, index_return_df, sample_list=['申万A股'], factor_list=factor_list,
+factor_test_result, _ = get_factor_test_result(factor_stratification_return, index_return_df, sample_list=sample_list, factor_list=factor_list,
                                                get_factor_data_date_list=get_factor_data_date_list,
-                                               regression_model_list=['WLS'], quantile_dict=quantile_dict, rolling_window_list=[32],
+                                               regression_model_list=regression_model_list, quantile_dict=quantile_dict,
+                                               rolling_window_list=rolling_window_list,
                                                stratification_num=stratification_number)
 factor_test_result = optimize_data_ram(factor_test_result)
 
@@ -1121,7 +1123,7 @@ factor_test_result = optimize_data_ram(factor_test_result)
 
 # 1. 小类因子收益率
 
-factor_stratification_hp_return = get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=['申万A股'],
+factor_stratification_hp_return = get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=sample_list,
                                                                       factor_list=factor_list, stratification_num=stratification_number,
                                                                       quantile_dict=quantile_dict, factor_name_dict=factor_name_dict)
 factor_stratification_hp_return = optimize_data_ram(factor_stratification_hp_return)
@@ -1135,13 +1137,14 @@ factor_test_result_df = optimize_data_ram(factor_test_result_df)
 # 3. 在显著的(Alpha为正且p值小于1)各档位中，暂时筛选出解释度最高的那个档位作为该因子序号的代表
 
 MES_factor_stratification_number = get_MES_factor_stratification_number_in_factor_number(
-    factor_test_result_df, ['申万A股'], ['WLS'], [32], factor_category_dict, factor_type_dict)
+    factor_test_result_df, sample_list, regression_model_list, rolling_window_list, factor_category_dict, factor_type_dict)
 MES_factor_stratification_number = optimize_data_ram(MES_factor_stratification_number)
 
 # 4. 对因子小类进行提纯
 
 all_factor_number_after_purified, MES_factor_number_after_purified = \
-    purify_factor_number_in_factor_type(MES_factor_stratification_number, factor_stratification_return, index_return_df, ['申万A股'], ['WLS'], [32],
+    purify_factor_number_in_factor_type(MES_factor_stratification_number, factor_stratification_return, index_return_df,
+                                        sample_list, regression_model_list, rolling_window_list,
                                         get_factor_data_date_list, factor_category_dict, factor_type_dict)
 all_factor_number_after_purified = optimize_data_ram(all_factor_number_after_purified)
 MES_factor_stratification_number = optimize_data_ram(MES_factor_number_after_purified)
@@ -1149,8 +1152,9 @@ MES_factor_stratification_number = optimize_data_ram(MES_factor_number_after_pur
 # 5. 对因子大类进行提纯
 
 all_factor_type_after_purified, MSE_factor_type_after_purified = \
-    purify_factor_type_in_factor_category(MES_factor_number_after_purified, factor_stratification_return, index_return_df, ['申万A股'], ['WLS'], [32],
-                                          get_factor_data_date_list, factor_category_dict)
+    purify_factor_type_in_factor_category(MES_factor_number_after_purified, factor_stratification_return, index_return_df,
+                                          sample_list, regression_model_list, rolling_window_list, get_factor_data_date_list,
+                                          factor_category_dict)
 all_factor_type_after_purified = optimize_data_ram(all_factor_type_after_purified)
 MSE_factor_type_after_purified = optimize_data_ram(MSE_factor_type_after_purified)
 
