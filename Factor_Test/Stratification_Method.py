@@ -1079,7 +1079,7 @@ clean_data = data_cleaning(raw_data[data_cleaning_base_columns], sample_list=sam
                            kicked_sector_list=['申万金融服务', '申万非银金融', '申万综合', '申万银行'],
                            go_public_days=250, data_processing_base_columns=['数据提取日', 'stockid', '持仓期停牌天数占比'],
                            get_factor_data_date_list=get_factor_data_date_list)
-
+pickle.dump(clean_data, open('/'.join(params_data_url.split('/')[:-1]) + '/result/clean_data.dat', 'wb'), pickle.HIGHEST_PROTOCOL)
 # 2. 数据分布及异常值处理
 
 # 2.1 数据分布和异常值数据
@@ -1087,6 +1087,9 @@ clean_data = data_cleaning(raw_data[data_cleaning_base_columns], sample_list=sam
 clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe, outlier_data = \
     data_processing(clean_data, sample_list=sample_list, factor_list=factor_list, factor_name_dict=factor_name_dict)
 clean_data_after_outlier = optimize_data_ram(clean_data_after_outlier)
+pickle.dump(clean_data_after_outlier,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/clean_data_after_outlier.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # ----------------------------------------------------------数据处理及分布描述（结束）-------------------------------------------------------------------
 
@@ -1095,6 +1098,9 @@ clean_data_after_outlier = optimize_data_ram(clean_data_after_outlier)
 factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=sample_list, factor_list=factor_list,
                                                             stratification_num=stratification_number, quantile_dict=quantile_dict)
 factor_stratification_data = optimize_data_ram(factor_stratification_data)
+pickle.dump(factor_stratification_data,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_stratification_data.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # ****************************************************************************************************************************************************
 
@@ -1103,6 +1109,9 @@ factor_stratification_return = \
                                      factor_list=factor_list, startification_num=stratification_number, quantile_dict=quantile_dict,
                                      yield_type_list=['持仓期收益率'])
 factor_stratification_return = optimize_data_ram(factor_stratification_return)
+pickle.dump(factor_stratification_return,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_stratification_return.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # ----------------------------------------------------------分组构建（结束）----------------------------------------------------------------------------
 
@@ -1117,6 +1126,9 @@ factor_test_result, _ = get_factor_test_result(factor_stratification_return, ind
                                                rolling_window_list=rolling_window_list,
                                                stratification_num=stratification_number)
 factor_test_result = optimize_data_ram(factor_test_result)
+pickle.dump(factor_test_result,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_test_result.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # ----------------------------------------------------------时间序列回归计算alpha、beta（结束）----------------------------------------------------------
 
@@ -1128,18 +1140,26 @@ factor_stratification_hp_return = get_factor_stratification_hp_return(factor_str
                                                                       factor_list=factor_list, stratification_num=stratification_number,
                                                                       quantile_dict=quantile_dict, factor_name_dict=factor_name_dict)
 factor_stratification_hp_return = optimize_data_ram(factor_stratification_hp_return)
-
+pickle.dump(factor_stratification_hp_return,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_stratification_hp_return.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # 2. 将回归结果保存在一个完成的dataframe中，以便后续保存
 
 factor_test_result_df = transform_dict_to_df(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
 factor_test_result_df = optimize_data_ram(factor_test_result_df)
+pickle.dump(factor_test_result_df,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_test_result_df.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # 3. 在显著的(Alpha为正且p值小于1)各档位中，暂时筛选出解释度最高的那个档位作为该因子序号的代表
 
 MES_factor_stratification_number = get_MES_factor_stratification_number_in_factor_number(
     factor_test_result_df, sample_list, regression_model_list, rolling_window_list, factor_category_dict, factor_type_dict)
 MES_factor_stratification_number = optimize_data_ram(MES_factor_stratification_number)
+pickle.dump(MES_factor_stratification_number,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/MES_factor_stratification_number.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # 4. 对因子小类进行提纯
 
@@ -1148,7 +1168,13 @@ all_factor_number_after_purified, MES_factor_number_after_purified = \
                                         sample_list, regression_model_list, rolling_window_list,
                                         get_factor_data_date_list, factor_category_dict, factor_type_dict)
 all_factor_number_after_purified = optimize_data_ram(all_factor_number_after_purified)
+pickle.dump(all_factor_number_after_purified,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/all_factor_number_after_purified.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 MES_factor_stratification_number = optimize_data_ram(MES_factor_number_after_purified)
+pickle.dump(MES_factor_number_after_purified,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/MES_factor_number_after_purified.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # 5. 对因子大类进行提纯
 
@@ -1157,7 +1183,13 @@ all_factor_type_after_purified, MSE_factor_type_after_purified = \
                                           sample_list, regression_model_list, rolling_window_list, get_factor_data_date_list,
                                           factor_category_dict)
 all_factor_type_after_purified = optimize_data_ram(all_factor_type_after_purified)
+pickle.dump(all_factor_type_after_purified,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/all_factor_type_after_purified.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 MSE_factor_type_after_purified = optimize_data_ram(MSE_factor_type_after_purified)
+pickle.dump(MSE_factor_type_after_purified,
+            open('/'.join(params_data_url.split('/')[:-1]) + '/result/MSE_factor_type_after_purified.dat', 'wb'),
+            pickle.HIGHEST_PROTOCOL)
 
 # ----------------------------------------------------------显著因子挑选及所需存储数据（结束）------------------------------------------------------------
 
