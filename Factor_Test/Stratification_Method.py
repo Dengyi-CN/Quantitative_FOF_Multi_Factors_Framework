@@ -24,7 +24,7 @@ low_level_divided_str = '{0: >{width}}'.format('', width=20) + '{0:*>{width}}'.f
 
 
 def print_high_level_divided_str(str):
-    print('\n' + '{0:—>{width}}'.format(str, width=40) + '{0:->{width}}'.format('', width=40 - len(str)) + '\n')
+    print('\n' + '{0:->{width}}'.format(str, width=40) + '{0:->{width}}'.format('', width=40 - len(str)) + '\n')
 
 
 def get_outlier_stock_list(factor_data, factor_name, method='winsorize'):
