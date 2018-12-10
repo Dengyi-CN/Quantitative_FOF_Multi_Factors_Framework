@@ -773,13 +773,12 @@ def get_MES_factor_stratification_number_in_factor_number(all_factor_stratificat
                     (all_factor_stratification_number_regression_test_result['滚动窗口'] == rolling_window)].copy()
 
                 tempo_significant_factor_stratifaction_number = tempo_factor_stratification_number[
-                    (tempo_factor_stratification_number['Alpha'].astype(float) > 0) &
-                    (tempo_factor_stratification_number['Alpha p值'].astype(float) <= 0.1)].copy()
+                    (tempo_factor_stratification_number['Alpha'] > 0) & (tempo_factor_stratification_number['Alpha p值'] <= 0.1)].copy()
 
                 # (1) 每期每个因子序号下解释度最高的那个Alpha显著为正的档位
                 MES_factor_stratification_number[(sample_name, regression_model, rolling_window)] = \
                     tempo_significant_factor_stratifaction_number.groupby(by=['数据提取日', '因子序号']).apply(
-                        lambda df: df[['档位'] + factor_test_info_list].sort_values(by='Adj. R-squared', ascending=False).iloc[0, :]).reset_index()
+                        lambda df: df[['档位'] + factor_test_info_list].sort_values(by='Adj. R-squared', ascending=False).iloc[:1, :]).reset_index()
 
                 MES_factor_stratification_number[(sample_name, regression_model, rolling_window)]['因子大类'] = \
                     MES_factor_stratification_number[(sample_name, regression_model, rolling_window)]['因子序号'].map(factor_category_dict)
@@ -789,6 +788,8 @@ def get_MES_factor_stratification_number_in_factor_number(all_factor_stratificat
                 # (2) 调换columns顺序方便后续查看
                 MES_factor_stratification_number[(sample_name, regression_model, rolling_window)] = \
                     MES_factor_stratification_number[(sample_name, regression_model, rolling_window)][all_info_list]
+                print('\t完成因子序号内筛选MSE：' + '，'.join([sample_name, regression_model, str(rolling_window)]))
+            print(low_level_divided_str)
 
     print_high_level_divided_str(action_str)
     return MES_factor_stratification_number
