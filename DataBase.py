@@ -23,14 +23,19 @@ def print_seq_line(action_str):
     return decorate
 
 
+def connect_oracle_db():
+    print('\t正在连接数据库…')
+    dsn = cx_Oracle.makedsn('10.1.1.10', '1521', 'ly_orcl')
+    connection = cx_Oracle.connect('lyzs_tinysoft', 'lyzs@2018', dsn)
+    print('\t数据库连接成功')
+    print(low_level_divided_str)
+    return connection
+
+
 @print_seq_line('写入数据')
 def insert_data_to_oracle_db(data=None, table_name=None):
     try:
-        print('\t正在连接数据库…')
-        dsn = cx_Oracle.makedsn('10.1.1.10', '1521', 'orclly')
-        connection = cx_Oracle.connect('lyzs_tinysoft', 'lyzs@2018', dsn)
-        print('\t数据库连接成功')
-        print(low_level_divided_str)
+        connection = connect_oracle_db()
     except BaseException:
         raise BaseException('数据库连接出错。')
 
@@ -62,12 +67,7 @@ def insert_data_to_oracle_db(data=None, table_name=None):
 def read_data_from_oracle_db(sql=None):
 
     try:
-        print('\t正在连接数据库…')
-        dsn = cx_Oracle.makedsn('10.1.1.10', '1521', 'orclly')
-        connection = cx_Oracle.connect('lyzs_tinysoft', 'lyzs@2018', dsn)
-        print('\t数据库连接成功')
-        print(low_level_divided_str)
-
+        connection = connect_oracle_db()
     except BaseException:
         raise BaseException('数据库连接出错。')
 
