@@ -23,19 +23,19 @@ def print_seq_line(action_str):
     return decorate
 
 
-def connect_oracle_db():
+def connect_oracle_db(account, passport):
     print('\t正在连接数据库…')
     # dsn = cx_Oracle.makedsn('10.1.1.10', '1521', 'ly_orcl')
-    connection = cx_Oracle.connect('query01', 'query01', '10.1.1.10:1521/orclly')
+    connection = cx_Oracle.connect(account, passport, '10.1.1.10:1521/orclly')
     print('\t数据库连接成功')
     print(low_level_divided_str)
     return connection
 
 
 @print_seq_line('写入数据')
-def insert_data_to_oracle_db(data=None, table_name=None):
+def insert_data_to_oracle_db(data=None, table_name=None, account=None, passport=None):
     try:
-        connection = connect_oracle_db()
+        connection = connect_oracle_db(account, passport)
     except BaseException:
         raise BaseException('数据库连接出错。')
 
@@ -64,10 +64,10 @@ def insert_data_to_oracle_db(data=None, table_name=None):
 
 
 @print_seq_line('读取数据')
-def read_data_from_oracle_db(sql=None):
+def read_data_from_oracle_db(sql=None, account=None, passport=None):
 
     try:
-        connection = connect_oracle_db()
+        connection = connect_oracle_db(account, passport)
     except BaseException:
         raise BaseException('数据库连接出错。')
 
@@ -82,6 +82,9 @@ def read_data_from_oracle_db(sql=None):
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
 params_data_url = eval(input('请输入需要写入数据库的数据存放文件夹地址：'))
+account = eval(input('请输入连接数据库的账号：'))
+passport = eval(input('请输入连接数据库的密码：'))
+
 raw_data = pickle.load(open(params_data_url + '/raw_data.dat', 'rb'))
 factor_library = pd.read_excel(params_data_url + '/因子列表-初步检测.xlsx')
 factor_list = factor_library['factor_number'].tolist()
@@ -91,12 +94,12 @@ stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 's
           '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
 stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
 
-insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data')
+insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data', account=account, passport=passport)
 
 # 2. factor_raw_data
 factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
     columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
-    id_vars=['数据提取日', 'stockid'], var_name=['factor_number'], value_name='factor_raw_value')
+    id_vars=['数据提取日', 'stockid'], var_name=['factor_number'], value_name='factor_raw_value', account=account, passport=passport)
 
 insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.factor_raw_data')
 
@@ -105,7 +108,7 @@ return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占�
                '申万行业收益率': 'sw_1st_sector_hpr', '沪深300收益率': 'hs300_hpr', '中证500收益率': 'zz500_hpr', '中证800收益率': 'zz800_hpr',
                '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr'}
 return_data = raw_data[['数据提取日', 'stockid'] + list(return_dict.keys())].rename(columns=return_dict)
-insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data')
+insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data', account=account, passport=passport)
 
 # 4. factor_stratificated_return
 
@@ -114,9 +117,9 @@ quantile_name_dict = {'low': '第1档收益率', **{str(i): '第' + str(i) + '�
                       '数据提取日': 'get_data_date'}
 factor_stratificated_return = factor_stratificated_return.rename(columns=quantile_name_dict).melt(
     id_vars=['factor_number', 'get_data_date', 'sample_scope'], var_name=['type_name'], value_name='value')
-insert_data_to_oracle_db(data=factor_stratificated_return, table_name='lyzs_tinysoft.factor_return')
+insert_data_to_oracle_db(data=factor_stratificated_return, table_name='lyzs_tinysoft.factor_return', account=account, passport=passport)
 
 # 5. factor_return_regression
 
 factor_return_regression = pickle.load(open(params_data_url + '/factor_return_regression.dat', 'rb'))
-insert_data_to_oracle_db(data=factor_return_regression, table_name='lyzs_tinysoft.factor_return_regression')
+insert_data_to_oracle_db(data=factor_return_regression, table_name='lyzs_tinysoft.factor_return_regression', account=account, passport=passport)
