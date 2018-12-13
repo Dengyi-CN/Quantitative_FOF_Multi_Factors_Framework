@@ -9,15 +9,15 @@ os.environ['NLS_CHARACTERSET'] = 'ZHS16GBK'
 os.environ['NLS_NCHAR_CHARACTERSET'] = 'AL16UTF16'
 import pickle
 # ----------------------------------------------------------函数（开始）-------------------------------------------------------------------------------
-low_level_divided_str = '{0: >{width}}'.format('', width=4) + '{0:~>{width}}'.format('', width=72) + '{0: >{width}}'.format('', width=4)
+low_level_divided_str = '{0: >{width}}'.format('', width=4) + '{0:~>{width}}'.format('', width=92) + '{0: >{width}}'.format('', width=4)
 
 
 def print_seq_line(action_str):
     def decorate(func):
         def wrapper(*args, **kwargs):
-            print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
+            print('\n' + '{0:*>{width}}'.format(action_str, width=50) + '{0:*>{width}}'.format('', width=50 - len(action_str)) + '\n')
             result = func(*args, **kwargs)
-            print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
+            print('\n' + '{0:*>{width}}'.format(action_str, width=50) + '{0:*>{width}}'.format('', width=50 - len(action_str)) + '\n')
             return result
         return wrapper
     return decorate
@@ -115,3 +115,8 @@ quantile_name_dict = {'low': '第1档收益率', **{str(i): '第' + str(i) + '�
 factor_stratificated_return = factor_stratificated_return.rename(columns=quantile_name_dict).melt(
     id_vars=['factor_number', 'get_data_date', 'sample_scope'], var_name=['type_name'], value_name='value')
 insert_data_to_oracle_db(data=factor_stratificated_return, table_name='factor_return')
+
+# 5. factor_test_data
+
+factor_test_data = pickle.load(open(params_data_url + '/factor_return_regression.dat', 'rb'))
+insert_data_to_oracle_db(data=factor_test_data, table_name='factor_return')
