@@ -25,8 +25,8 @@ def print_seq_line(action_str):
 
 def connect_oracle_db():
     print('\t正在连接数据库…')
-    dsn = cx_Oracle.makedsn('10.1.1.10', '1521', 'ly_orcl')
-    connection = cx_Oracle.connect('lyzs_tinysoft', 'lyzs@2018', dsn)
+    # dsn = cx_Oracle.makedsn('10.1.1.10', '1521', 'ly_orcl')
+    connection = cx_Oracle.connect('query01', 'query01', '10.1.1.10:1521/orclly')
     print('\t数据库连接成功')
     print(low_level_divided_str)
     return connection
