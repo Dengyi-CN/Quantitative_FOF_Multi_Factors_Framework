@@ -91,21 +91,21 @@ stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 's
           '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
 stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
 
-insert_data_to_oracle_db(data=stock_info_data, table_name='stock_info_data')
+insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data')
 
 # 2. factor_raw_data
 factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
     columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
     id_vars=['数据提取日', 'stockid'], var_name=['factor_number'], value_name='factor_raw_value')
 
-insert_data_to_oracle_db(data=factor_raw_data, table_name='factor_raw_data')
+insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.factor_raw_data')
 
 # 3. return_data
 return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
                '申万行业收益率': 'sw_1st_sector_hpr', '沪深300收益率': 'hs300_hpr', '中证500收益率': 'zz500_hpr', '中证800收益率': 'zz800_hpr',
                '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr'}
 return_data = raw_data[['数据提取日', 'stockid'] + list(return_dict.keys())].rename(columns=return_dict)
-insert_data_to_oracle_db(data=return_data, table_name='return_data')
+insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data')
 
 # 4. factor_stratificated_return
 
@@ -114,9 +114,9 @@ quantile_name_dict = {'low': '第1档收益率', **{str(i): '第' + str(i) + '�
                       '数据提取日': 'get_data_date'}
 factor_stratificated_return = factor_stratificated_return.rename(columns=quantile_name_dict).melt(
     id_vars=['factor_number', 'get_data_date', 'sample_scope'], var_name=['type_name'], value_name='value')
-insert_data_to_oracle_db(data=factor_stratificated_return, table_name='factor_return')
+insert_data_to_oracle_db(data=factor_stratificated_return, table_name='lyzs_tinysoft.factor_return')
 
-# 5. factor_test_data
+# 5. factor_return_regression
 
-factor_test_data = pickle.load(open(params_data_url + '/factor_return_regression.dat', 'rb'))
-insert_data_to_oracle_db(data=factor_test_data, table_name='factor_return')
+factor_return_regression = pickle.load(open(params_data_url + '/factor_return_regression.dat', 'rb'))
+insert_data_to_oracle_db(data=factor_return_regression, table_name='lyzs_tinysoft.factor_return_regression')
