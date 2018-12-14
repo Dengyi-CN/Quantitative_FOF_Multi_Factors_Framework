@@ -79,7 +79,7 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
         connection.commit()
         percent = '{:.2%}'.format(chunk_loc_list[i + 1] / data.shape[0])
         sys.stdout.write('\r')
-        sys.stdout.write("\t数据写入完成进度：[%-50s] %s" % ('#' * int(math.floor(i * 50 / data.shape[0])), percent))
+        sys.stdout.write("\t数据写入完成进度：[%-50s] %s" % ('#' * (i // 2), percent))
         sys.stdout.flush()
 
     # 关闭游标
