@@ -23,7 +23,16 @@ def print_seq_line(action_str):
     return decorate
 
 
-def connect_oracle_db(account, passport):
+def logging():
+    def decorate(func):
+        def wrapper(*args, **kwargs):
+            print('\tlogging')
+            return func(*args, **kwargs)
+        return wrapper
+    return decorate
+
+
+def connect_oracle_db(account='lyzs_tinysoft', passport='lyzs@2018'):
     print('\t正在连接数据库…')
     # dsn = cx_Oracle.makedsn('10.1.1.10', '1521', 'ly_orcl')
     connection = cx_Oracle.connect(account, passport, '10.1.1.10:1521/orclly')
@@ -33,7 +42,7 @@ def connect_oracle_db(account, passport):
 
 
 @print_seq_line('写入数据')
-def insert_data_to_oracle_db(data=None, table_name=None, account=None, passport=None):
+def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft', passport='lyzs@2018'):
     try:
         connection = connect_oracle_db(account, passport)
     except BaseException:
@@ -64,7 +73,8 @@ def insert_data_to_oracle_db(data=None, table_name=None, account=None, passport=
 
 
 @print_seq_line('读取数据')
-def read_data_from_oracle_db(sql=None, account=None, passport=None):
+@logging()
+def read_data_from_oracle_db(sql=None, account='lyzs_tinysoft', passport='lyzs@2018'):
 
     try:
         connection = connect_oracle_db(account, passport)
@@ -72,7 +82,10 @@ def read_data_from_oracle_db(sql=None, account=None, passport=None):
         raise BaseException('数据库连接出错。')
 
     print('\t开始读取数据…')
-    print('\t传入的sql语句为:' + sql)
+    print('\t传入的sql语句为:\n')
+    for line in sql.splitlines():
+        print('\t\t> ' + line)
+    print()
     cursor = connection.cursor()
     cursor.execute(sql)
     exec_result = pd.DataFrame(cursor.fetchall(), columns=[i[0] for i in cursor.description])
@@ -89,19 +102,19 @@ raw_data = pickle.load(open(params_data_url + '/raw_data.dat', 'rb'))
 factor_library = pd.read_excel(params_data_url + '/因子列表-初步检测.xlsx')
 factor_list = factor_library['factor_number'].tolist()
 
-# 1. stock_info_data
-stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 'stockid', 'stockname', 'sectorid', 'sectorname', '上市天数', '沪深300成分股',
-          '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
-stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
-
-insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data', account=account, passport=passport)
+# # 1. stock_info_data
+# stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 'stockid', 'stockname', 'sectorid', 'sectorname', '上市天数', '沪深300成分股',
+#           '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
+# stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
+#
+# insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data', account=account, passport=passport)
 
 # 2. factor_raw_data
 factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
     columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
-    id_vars=['数据提取日', 'stockid'], var_name=['factor_number'], value_name='factor_raw_value', account=account, passport=passport)
+    id_vars=['数据提取日', 'stockid'], var_name=['factor_number'], value_name='factor_raw_value')
 
-insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.factor_raw_data')
+insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.factor_raw_data', account=account, passport=passport)
 
 # 3. return_data
 return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
