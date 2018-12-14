@@ -8,6 +8,7 @@ os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.ZHS16GBK'
 os.environ['NLS_CHARACTERSET'] = 'ZHS16GBK'
 os.environ['NLS_NCHAR_CHARACTERSET'] = 'AL16UTF16'
 import pickle
+import re
 # ----------------------------------------------------------函数（开始）-------------------------------------------------------------------------------
 low_level_divided_str = '{0: >{width}}'.format('', width=4) + '{0:~>{width}}'.format('', width=92) + '{0: >{width}}'.format('', width=4)
 
@@ -52,17 +53,28 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
     cursor = connection.cursor()
 
     # 生成对应类型的格式化输出
-    format_string = ','.join(data.iloc[0, :].apply(lambda s: '\'%s\'' if isinstance(s, str) else(
-        '%d' if np.issubdtype(s, np.integer) else '%f')).tolist())
-    insert_sql = 'insert into ' + table_name + ' (' + ','.join(data.columns.tolist()) + ') values (' + format_string + ')'
+    # format_string = ','.join(data.iloc[0, :].apply(lambda s: '\'%s\'' if isinstance(s, str) else(
+    #     '%d' if np.issubdtype(s, np.integer) else '%f')).tolist())
+    # insert_sql = 'insert into ' + table_name + ' (' + ','.join(data.columns.tolist()) + ') values (' + format_string + ')'
+    #
+    # for i in range(data.shape[0]):
+    #     cursor.execute(insert_sql % tuple(data.iloc[i, :][data.columns].apply(lambda s: s.replace('\'', '\'\'') if isinstance(s, str) else s).values))
+    #     # if i % (data.shape[0] // 50) == 0:
+    #     percent = '{:.2%}'.format(i / data.shape[0])
+    #     sys.stdout.write('\r')
+    #     sys.stdout.write("\t数据写入完成进度：[%-50s] %s" % ('#' * int(math.floor(i * 50 / data.shape[0])), percent))
+    #     sys.stdout.flush()
 
-    for i in range(data.shape[0]):
-        cursor.execute(insert_sql % tuple(data.iloc[i, :][data.columns].apply(lambda s: s.replace('\'', '\'\'') if isinstance(s, str) else s).values))
-        # if i % (data.shape[0] // 50) == 0:
-        percent = '{:.2%}'.format(i / data.shape[0])
-        sys.stdout.write('\r')
-        sys.stdout.write("\t数据写入完成进度：[%-50s] %s" % ('#' * int(math.floor(i * 50 / data.shape[0])), percent))
-        sys.stdout.flush()
+    insert_data = data.apply(lambda s: tuple(s.tolist()), axis=1).values.tolist()
+    executemany_format_string = ','.join([':' + str(i) for i in range(1, data.shape[1] + 1)])
+    insert_sql = 'insert into ' + table_name + ' (' + ','.join(data.columns.tolist()) + ') values (' + executemany_format_string + ')'
+
+    print('\t正在写入数据…')
+    cursor.executemany(insert_sql, insert_data)
+    connection.commit()
+    # 关闭游标
+    cursor.close()
+    connection.close()
 
     connection.commit()
     # 关闭游标
@@ -73,7 +85,7 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
 
 
 @print_seq_line('读取数据')
-@logging()
+# @logging()
 def read_data_from_oracle_db(sql=None, account='lyzs_tinysoft', passport='lyzs@2018'):
 
     try:
@@ -84,7 +96,8 @@ def read_data_from_oracle_db(sql=None, account='lyzs_tinysoft', passport='lyzs@2
     print('\t开始读取数据…')
     print('\t传入的sql语句为:\n')
     for line in sql.splitlines():
-        print('\t\t> ' + line)
+        if re.sub('\s','',line) != '':
+            print('\t\t*> ' + line)
     print()
     cursor = connection.cursor()
     cursor.execute(sql)
@@ -119,8 +132,8 @@ insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.factor_
 # 3. return_data
 return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
                '申万行业收益率': 'sw_1st_sector_hpr', '沪深300收益率': 'hs300_hpr', '中证500收益率': 'zz500_hpr', '中证800收益率': 'zz800_hpr',
-               '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr'}
-return_data = raw_data[['数据提取日', 'stockid'] + list(return_dict.keys())].rename(columns=return_dict)
+               '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr', '数据提取日': 'get_data_date', 'stockid': 'stock_id'}
+return_data = raw_data[list(return_dict.keys())].rename(columns=return_dict)
 insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data', account=account, passport=passport)
 
 # 4. factor_stratificated_return
