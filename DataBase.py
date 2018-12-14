@@ -64,19 +64,24 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
     #     sys.stdout.write('\r')
     #     sys.stdout.write("\t数据写入完成进度：[%-50s] %s" % ('#' * int(math.floor(i * 50 / data.shape[0])), percent))
     #     sys.stdout.flush()
-
-    insert_data = data.apply(lambda s: tuple(s.tolist()), axis=1).values.tolist()
     executemany_format_string = ','.join([':' + str(i) for i in range(1, data.shape[1] + 1)])
-    insert_sql = 'insert into ' + table_name + ' (' + ','.join(data.columns.tolist()) + ') values (' + executemany_format_string + ')'
 
-    print('\t正在写入数据…')
-    cursor.executemany(insert_sql, insert_data)
-    connection.commit()
-    # 关闭游标
-    cursor.close()
-    connection.close()
+    chunk_size = 100
+    chunk_loc_list = list(range(0, len(data), len(data) // chunk_size))
+    chunk_loc_list[-1] = len(data)
 
-    connection.commit()
+    for i, chunk_loc in enumerate(chunk_loc_list[:-1]):
+
+        insert_sql = 'insert into ' + table_name + ' (' + ','.join(data.columns.tolist()) + ') values (' + executemany_format_string + ')'
+        insert_data = data.iloc[chunk_loc_list[i]:chunk_loc_list[i + 1]].apply(lambda s: tuple(s.tolist()), axis=1).values.tolist()
+
+        cursor.executemany(insert_sql, insert_data)
+        connection.commit()
+        percent = '{:.2%}'.format(chunk_loc_list[i + 1] / data.shape[0])
+        sys.stdout.write('\r')
+        sys.stdout.write("\t数据写入完成进度：[%-50s] %s" % ('#' * int(math.floor(i * 50 / data.shape[0])), percent))
+        sys.stdout.flush()
+
     # 关闭游标
     cursor.close()
     connection.close()
