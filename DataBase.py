@@ -52,7 +52,7 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
     cursor = connection.cursor()
 
     # 生成对应类型的格式化输出
-    format_string = ','.join(stock_info_data.iloc[0, :].apply(lambda s: '\'%s\'' if isinstance(s, str) else(
+    format_string = ','.join(data.iloc[0, :].apply(lambda s: '\'%s\'' if isinstance(s, str) else(
         '%d' if np.issubdtype(s, np.integer) else '%f')).tolist())
     insert_sql = 'insert into ' + table_name + ' (' + ','.join(data.columns.tolist()) + ') values (' + format_string + ')'
 
@@ -65,11 +65,11 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
         sys.stdout.flush()
 
     connection.commit()
-    print('\t数据库提交成功')
-    print(low_level_divided_str)
     # 关闭游标
     cursor.close()
     connection.close()
+    print('\n\t数据提交成功，已关闭数据库连接')
+    print(low_level_divided_str)
 
 
 @print_seq_line('读取数据')
@@ -112,7 +112,7 @@ factor_list = factor_library['factor_number'].tolist()
 # 2. factor_raw_data
 factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
     columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
-    id_vars=['数据提取日', 'stockid'], var_name=['factor_number'], value_name='factor_raw_value')
+    id_vars=['get_data_date', 'stock_id'], var_name=['factor_number'], value_name='factor_raw_value')
 
 insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.factor_raw_data', account=account, passport=passport)
 
