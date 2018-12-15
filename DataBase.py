@@ -135,12 +135,12 @@ factor_list = factor_library['factor_number'].tolist()
 # insert_data_to_oracle_db(data=factor_raw_data.dropna(), table_name='lyzs_tinysoft.factor_raw_data', account=account, passport=passport)
 
 # 3. return_data
-return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
-               '申万行业收益率': 'sw_1st_sector_hpr', '沪深300收益率': 'hs300_hpr', '中证500收益率': 'zz500_hpr', '中证800收益率': 'zz800_hpr',
-               '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr', '数据提取日': 'get_data_date', 'stockid': 'stock_id'}
-return_data = raw_data[list(return_dict.keys())].rename(columns=return_dict)
-return_data = return_data.where(pd.notnull(return_data), None)
-insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data', account=account, passport=passport)
+# return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
+#                '申万行业收益率': 'sw_1st_sector_hpr', '沪深300收益率': 'hs300_hpr', '中证500收益率': 'zz500_hpr', '中证800收益率': 'zz800_hpr',
+#                '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr', '数据提取日': 'get_data_date', 'stockid': 'stock_id'}
+# return_data = raw_data[list(return_dict.keys())].rename(columns=return_dict)
+# return_data = return_data.where(pd.notnull(return_data), None)
+# insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data', account=account, passport=passport)
 
 # 4. factor_stratificated_return
 
@@ -149,11 +149,11 @@ quantile_name_dict = {'low': '第1档收益率', **{str(i): '第' + str(i) + '�
                       '数据提取日': 'get_data_date'}
 factor_stratificated_return = factor_stratificated_return.rename(columns=quantile_name_dict).melt(
     id_vars=['factor_number', 'get_data_date', 'sample_scope'], var_name=['type_name'], value_name='value')
-factor_stratificated_return = return_data.where(pd.notnull(factor_stratificated_return), None)
+factor_stratificated_return = factor_stratificated_return.where(pd.notnull(factor_stratificated_return), None)
 insert_data_to_oracle_db(data=factor_stratificated_return, table_name='lyzs_tinysoft.factor_return', account=account, passport=passport)
 
 # 5. factor_return_regression
 
 factor_return_regression = pickle.load(open(params_data_url + '/factor_return_regression.dat', 'rb'))
-factor_return_regression = return_data.where(pd.notnull(factor_return_regression), None)
+factor_return_regression = factor_return_regression.where(pd.notnull(factor_return_regression), None)
 insert_data_to_oracle_db(data=factor_return_regression, table_name='lyzs_tinysoft.factor_return_regression', account=account, passport=passport)
