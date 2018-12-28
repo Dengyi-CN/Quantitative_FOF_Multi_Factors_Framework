@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "../..")))
 import pandas as pd
 pd.set_option('max_columns', 20)
 pd.set_option('display.width', 400)
