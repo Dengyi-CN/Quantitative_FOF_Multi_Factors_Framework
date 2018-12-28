@@ -20,11 +20,18 @@ plt.rcParams['axes.unicode_minus'] = False
 import seaborn as sns
 sns.set_context(rc={'figure.figsize': (12, 7)})
 # ----------------------------------------------------------函数（开始）-------------------------------------------------------------------------------
-low_level_divided_str = '{0: >{width}}'.format('', width=20) + '{0:*>{width}}'.format('', width=40) + '{0: >{width}}'.format('', width=20)
+low_level_divided_str = '{0: >{width}}'.format('', width=4) + '{0:~>{width}}'.format('', width=92) + '{0: >{width}}'.format('', width=4)
 
 
-def print_high_level_divided_str(str):
-    print('\n' + '{0:->{width}}'.format(str, width=40) + '{0:->{width}}'.format('', width=40 - len(str)) + '\n')
+def print_seq_line(action_str):
+    def decorate(func):
+        def wrapper(*args, **kwargs):
+            print('\n' + '{0:*>{width}}'.format(action_str, width=50) + '{0:*>{width}}'.format('', width=50 - len(action_str)) + '\n')
+            result = func(*args, **kwargs)
+            print('\n' + '{0:*>{width}}'.format(action_str, width=50) + '{0:*>{width}}'.format('', width=50 - len(action_str)) + '\n')
+            return result
+        return wrapper
+    return decorate
 
 
 def get_outlier_stock_list(factor_data, factor_name, method='winsorize'):
@@ -539,10 +546,10 @@ def get_factor_test_result(factor_stratification_return, index_return_df, sample
                                 factor_test_result[(sample_name, regression_model, rolling_window, factor_name, quantile_dict[i])][
                                     'Adj. R-squared'].apply(pd.to_numeric, downcast='float')
 
-                        print('\t完成单因子回归检验：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')' +
-                              '-第' + quantile_dict[i] + '组-窗口期' + str(rolling_window))
+                        print('\t完成单因子回归检验：' + sample_name + '-' + factor_name + '(' + factor_name_dict[factor_name] + ')' + '-回归方法' +
+                              regression_model + '-第' + quantile_dict[i] + '组-窗口期' + str(rolling_window))
 
-            print(low_level_divided_str)
+                    print(low_level_divided_str)
 
     print_high_level_divided_str(action_str)
 
@@ -603,6 +610,26 @@ def transform_dict_to_df(dict_data, keys_column_name_list):
 
     print_high_level_divided_str(action_str)
     return dataframe_data
+
+
+def put_keys_into_df(data, keys_list):
+    """
+    为了体现transform_dict_to_df函数的愚蠢
+    :param data:
+    :param keys_list:
+    :return:
+    """
+    concat_list = []
+    for keys, df in data.items():
+        if not pd.Series(df.index).equals(pd.Series(range(df.shape[0]))):
+            df = df.reset_index()
+
+        df[keys_list] = pd.DataFrame([list(keys)], index=range(df.shape[0]))
+        concat_list.append(df)
+
+    concat_df = pd.concat(concat_list, axis=0)
+
+    return concat_df
 
 
 def get_purified_factor(prior_purified_data, purified_class=None, lower_class=None, sample_name=None, regression_model=None, rolling_window=None,
@@ -935,6 +962,9 @@ def optimize_data_ram(data):
         print('\t传入数据：' + ','.join([str(type) + '(' + str(num) + '列)' for type, num in data.get_dtype_counts().to_dict().items()]))
         before_memory = data.memory_usage(deep=True).sum() / 1024 ** 2
         print('\t传入数据大小：' + "{:03.2f}MB".format(before_memory))
+        if before_memory <= 100:
+            print('\t数据大小小于100M，暂时不进行优化')
+            return data
         print('\t正在优化数据结构及存储空间……')
 
         if not data.select_dtypes(include=['int']).empty:
@@ -966,6 +996,9 @@ def optimize_data_ram(data):
                     type_count[type] = count
         print('\t传入数据：' + ', '.join([str(type) + '(' + str(count) + ')' for type, count in type_count.items()]))
         before_memory = sys.getsizeof(data) / 1024 ** 2
+        if before_memory <= 100:
+            print('\t数据大小小于100M，暂时不进行优化')
+            return data
         print('\t传入数据大小：' + "{:03.2f}MB".format(before_memory))
 
         for key, df in data.items():
@@ -1003,195 +1036,159 @@ def optimize_data_ram(data):
     return data
 
 
-def display_data_structure_info(data):
-    action_str = '数据内存查看'
-    print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
-
-    if isinstance(data, pd.DataFrame):
-        print('\t数据类型: ' + ', '.join([str(type) + '(' + str(count) + ')' for type, count in data.get_dtype_counts().to_dict().items()]))
-        print('\t数据大小: ' + "{:03.2f}MB".format(data.memory_usage(deep=True).sum() / 1024 ** 2))
-    elif isinstance(data, dict):
-        type_count = {}
-        for key, df in data.items():
-            for type, count in df.get_dtype_counts().to_dict().items():
-                if type in type_count.keys():
-                    type_count[type] += count
-                else:
-                    type_count[type] = count
-        print('\t数据类型: ' + ', '.join([str(type) + '(' + str(count) + ')' for type, count in type_count.items()]))
-        print('\t数据大小: ' + "{:03.2f}MB".format(sys.getsizeof(data) / 1024 ** 2))
-
-    print('\n' + '{0:*>{width}}'.format(action_str, width=40) + '{0:*>{width}}'.format('', width=40 - len(action_str)) + '\n')
+def pickle_dump_data(data, output_file_url, data_name):
+    pickle.dump(data, open(output_file_url + '/' + data_name + '.dat', 'wb'), pickle.HIGHEST_PROTOCOL)
 
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
 
-# 设置参数
-params_data_url = eval(input('请输入输入参数excel的地址：'))
-params_data = pd.read_excel(params_data_url, index_col=0)
-data_url = params_data.loc['data_url', '参数']
-sample_list = eval(params_data.loc['sample_list', '参数'])
-regression_model_list = eval(params_data.loc['regression_model_list', '参数'])
-rolling_window_list = eval(params_data.loc['rolling_window_list', '参数'])
-stratification_number = params_data.loc['stratification_number', '参数']
+if __name__ == "__main__":
+    # 设置参数
+    params_data_url = eval(input('请输入输入参数excel的地址：'))
+    params_data = pd.read_excel(params_data_url, index_col=0)
+    data_url = params_data.loc['data_url', '参数']
+    sample_list = eval(params_data.loc['sample_list', '参数'])
+    regression_model_list = eval(params_data.loc['regression_model_list', '参数'])
+    rolling_window_list = eval(params_data.loc['rolling_window_list', '参数'])
+    stratification_number = params_data.loc['stratification_number', '参数']
+    output_file_url = '/'.join(params_data_url.split('/')[:-1]) + '/result'
 
-# ----------------------------------------------------------基础数据准备（开始）------------------------------------------------------------------------
-action_str = '基础数据'
-print_high_level_divided_str(action_str)
-# 得到初始数据
-raw_data = pickle.load(open(data_url + '/raw_data.dat', 'rb'))
-get_factor_data_date_list = [date.strftime('%Y-%m-%d') for date in pd.read_excel(data_url + '/日期序列-周度.xlsx')['endt'].tolist()]
-factor_library = pd.read_excel(data_url + '/因子列表-初步检测.xlsx')
-monetary_fund_return = pd.read_excel(data_url + '/货币基金收益.xlsx', index_col=0)
-quantile_dict = {**{0: 'low'}, **{i: str(i + 1) for i in range(1, stratification_number - 1)}, **{stratification_number - 1: 'high'}}
+    # ----------------------------------------------------------基础数据准备（开始）------------------------------------------------------------------------
+    action_str = '基础数据'
+    print_high_level_divided_str(action_str)
+    # 得到初始数据
+    raw_data = pickle.load(open(data_url + '/raw_data.dat', 'rb'))
+    get_factor_data_date_list = [date.strftime('%Y-%m-%d') for date in pd.read_excel(data_url + '/日期序列-周度.xlsx')['endt'].tolist()]
+    factor_library = pd.read_excel(data_url + '/因子列表-初步检测.xlsx')
+    monetary_fund_return = pd.read_excel(data_url + '/货币基金收益.xlsx', index_col=0)
+    quantile_dict = {0: 'low', **{i: str(i + 1) for i in range(1, stratification_number - 1)}, stratification_number - 1: 'high'}
 
-factor_list = factor_library['因子序号'].tolist()
-factor_name_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子名称'] for i in range(factor_library.shape[0])}
-factor_type_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子小类'] for i in range(factor_library.shape[0])}
-factor_category_dict = {factor_library.loc[i, '因子序号']: factor_library.loc[i, '因子大类'] for i in range(factor_library.shape[0])}
+    factor_list = factor_library['factor_number'].tolist()
+    factor_name_dict = {factor_library.loc[i, 'factor_number']: factor_library.loc[i, 'factor_name'] for i in range(factor_library.shape[0])}
+    factor_type_dict = {factor_library.loc[i, 'factor_number']: factor_library.loc[i, 'factor_second_class'] for i in range(factor_library.shape[0])}
+    factor_category_dict = {factor_library.loc[i, 'factor_number']: factor_library.loc[i, 'factor_first_class'] for i in range(factor_library.shape[0])}
 
-base_info_columns_list = raw_data.columns[:23].tolist()
-base_info_data = raw_data[base_info_columns_list].copy()
-index_return_list = ['申万行业收益率', '沪深300收益率', '中证500收益率', '中证800收益率', '上证综指收益率', '申万A股收益率']
-yield_type_list = ['持仓期收益率'] + [index_name[:-3] + '相对' + index_name[-3:] for index_name in index_return_list[1:]]
-base_info_columns = base_info_columns_list + [index_name[:-3] + '相对' + index_name[-3:] for index_name in index_return_list[1:]]
-# 避免每个变量都保存一遍基础数据，释放内存
-data_cleaning_base_columns = ['数据提取日', '财务数据最新报告期', 'stockid', 'sectorname', '是否st', '是否pt', '是否停牌', '上市天数', '持仓期停牌天数占比'] + \
-                             [sample_name + '成分股' for sample_name in sample_list] + factor_list
+    base_info_columns_list = raw_data.columns[:23].tolist()
+    base_info_data = raw_data[base_info_columns_list].copy()
+    index_return_list = ['申万行业收益率', '沪深300收益率', '中证500收益率', '中证800收益率', '上证综指收益率', '申万A股收益率']
+    yield_type_list = ['持仓期收益率'] + [index_name[:-3] + '相对' + index_name[-3:] for index_name in index_return_list[1:]]
+    base_info_columns = base_info_columns_list + [index_name[:-3] + '相对' + index_name[-3:] for index_name in index_return_list[1:]]
+    # 避免每个变量都保存一遍基础数据，释放内存
+    data_cleaning_base_columns = ['数据提取日', '财务数据最新报告期', 'stockid', 'sectorname', '是否st', '是否pt', '是否停牌', '上市天数', '持仓期停牌天数占比'] + \
+                                 [sample_name + '成分股' for sample_name in sample_list] + factor_list
 
-# 计算指数收益率(因为不想另外再单独取指数的收益率，所以在天软中取基础数据的时候同时取了)
-index_return_df = raw_data.groupby('数据提取日').apply(lambda df: df[index_return_list[1:]].iloc[0, :])
+    # 计算指数收益率(因为不想另外再单独取指数的收益率，所以在天软中取基础数据的时候同时取了)
+    index_return_df = raw_data.groupby('数据提取日').apply(lambda df: df[index_return_list[1:]].iloc[0, :])
 
-# 计算相对收益率(后续在天软中实现，同时保留指数的收益率和相对收益率)
-for index_name in index_return_list[1:]:
-    raw_data[index_name[:-3] + '相对' + index_name[-3:]] = raw_data['持仓期收益率'] - raw_data[index_name]
+    # 计算相对收益率(后续在天软中实现，同时保留指数的收益率和相对收益率)
+    for index_name in index_return_list[1:]:
+        raw_data[index_name[:-3] + '相对' + index_name[-3:]] = raw_data['持仓期收益率'] - raw_data[index_name]
 
-# 计算市场平均收益率、中位数收益率
-market_mean_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].mean()).astype('float32')
-market_median_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].median()).astype('float32')
-print_high_level_divided_str(action_str)
+    # 计算市场平均收益率、中位数收益率
+    market_mean_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].mean()).astype('float32')
+    market_median_return = raw_data.groupby(by=['数据提取日']).apply(lambda df: df[yield_type_list].median()).astype('float32')
+    print_high_level_divided_str(action_str)
 
-# ----------------------------------------------------------基础数据准备（结束）------------------------------------------------------------------------
+    # ----------------------------------------------------------基础数据准备（结束）------------------------------------------------------------------------
 
-# ----------------------------------------------------------数据处理及分布描述（开始）-------------------------------------------------------------------
+    # ----------------------------------------------------------数据处理及分布描述（开始）-------------------------------------------------------------------
 
-clean_data = data_cleaning(raw_data[data_cleaning_base_columns], sample_list=sample_list, factor_list=factor_list,
-                           kicked_sector_list=['申万金融服务', '申万非银金融', '申万综合', '申万银行'],
-                           go_public_days=250, data_processing_base_columns=['数据提取日', 'stockid', '持仓期停牌天数占比'],
-                           get_factor_data_date_list=get_factor_data_date_list)
-pickle.dump(clean_data, open('/'.join(params_data_url.split('/')[:-1]) + '/result/clean_data.dat', 'wb'), pickle.HIGHEST_PROTOCOL)
-# 2. 数据分布及异常值处理
+    clean_data = data_cleaning(raw_data[data_cleaning_base_columns], sample_list=sample_list, factor_list=factor_list,
+                               kicked_sector_list=['申万金融服务', '申万非银金融', '申万综合', '申万银行'],
+                               go_public_days=250, data_processing_base_columns=['数据提取日', 'stockid', '持仓期停牌天数占比'],
+                               get_factor_data_date_list=get_factor_data_date_list)
+    clean_data = optimize_data_ram(clean_data)
+    pickle_dump_data(clean_data, output_file_url, data_name='clean_data')
 
-# 2.1 数据分布和异常值数据
+    # 2. 数据分布及异常值处理
 
-clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe, outlier_data = \
-    data_processing(clean_data, sample_list=sample_list, factor_list=factor_list, factor_name_dict=factor_name_dict)
-clean_data_after_outlier = optimize_data_ram(clean_data_after_outlier)
-pickle.dump(clean_data_after_outlier,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/clean_data_after_outlier.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # 2.1 数据分布和异常值数据
 
-# ----------------------------------------------------------数据处理及分布描述（结束）-------------------------------------------------------------------
+    clean_data_after_outlier, factor_raw_data_describe, factor_clean_data_describe, outlier_data = \
+        data_processing(clean_data, sample_list=sample_list, factor_list=factor_list, factor_name_dict=factor_name_dict)
+    clean_data_after_outlier = optimize_data_ram(clean_data_after_outlier)
+    pickle_dump_data(clean_data_after_outlier, output_file_url, data_name='clean_data_after_outlier')
 
-# ----------------------------------------------------------分组构建（开始）----------------------------------------------------------------------------
+    # ----------------------------------------------------------数据处理及分布描述（结束）-------------------------------------------------------------------
 
-factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=sample_list, factor_list=factor_list,
-                                                            stratification_num=stratification_number, quantile_dict=quantile_dict)
-factor_stratification_data = optimize_data_ram(factor_stratification_data)
-pickle.dump(factor_stratification_data,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_stratification_data.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # ----------------------------------------------------------分组构建（开始）----------------------------------------------------------------------------
 
-# ****************************************************************************************************************************************************
+    factor_stratification_data = get_factor_stratification_data(clean_data_after_outlier, sample_list=sample_list, factor_list=factor_list,
+                                                                stratification_num=stratification_number, quantile_dict=quantile_dict)
+    factor_stratification_data = optimize_data_ram(factor_stratification_data)
+    pickle_dump_data(factor_stratification_data, output_file_url, data_name='factor_stratification_data')
 
-factor_stratification_return = \
-    get_factor_stratification_return(factor_stratification_data, raw_data[['数据提取日', 'stockid'] + yield_type_list], sample_list=sample_list,
-                                     factor_list=factor_list, startification_num=stratification_number, quantile_dict=quantile_dict,
-                                     yield_type_list=['持仓期收益率'])
-factor_stratification_return = optimize_data_ram(factor_stratification_return)
-pickle.dump(factor_stratification_return,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_stratification_return.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # ****************************************************************************************************************************************************
 
-# ----------------------------------------------------------分组构建（结束）----------------------------------------------------------------------------
+    factor_stratification_return = \
+        get_factor_stratification_return(factor_stratification_data, raw_data[['数据提取日', 'stockid'] + yield_type_list], sample_list=sample_list,
+                                         factor_list=factor_list, startification_num=stratification_number, quantile_dict=quantile_dict,
+                                         yield_type_list=['持仓期收益率'])
+    factor_stratification_return = optimize_data_ram(factor_stratification_return)
+    pickle_dump_data(factor_stratification_return, output_file_url, data_name='factor_stratification_return')
 
-# ----------------------------------------------------------时间序列回归计算alpha、beta（开始）----------------------------------------------------------
+    # 1. 小类因子收益率
 
-print('-----------------------------------------------------------------------')
-print('开始进行单因子检测…')
+    factor_stratification_hp_return = get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=sample_list,
+                                                                          factor_list=factor_list, stratification_num=stratification_number,
+                                                                          quantile_dict=quantile_dict, factor_name_dict=factor_name_dict)
+    factor_stratification_hp_return = optimize_data_ram(factor_stratification_hp_return)
+    factor_stratificated_return = transform_dict_to_df(factor_stratification_hp_return, ['sample_scope', 'factor_number'])
 
-factor_test_result, _ = get_factor_test_result(factor_stratification_return, index_return_df, sample_list=sample_list, factor_list=factor_list,
-                                               get_factor_data_date_list=get_factor_data_date_list,
-                                               regression_model_list=regression_model_list, quantile_dict=quantile_dict,
-                                               rolling_window_list=rolling_window_list,
-                                               stratification_num=stratification_number)
-factor_test_result = optimize_data_ram(factor_test_result)
-pickle.dump(factor_test_result,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_test_result.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    pickle_dump_data(factor_stratification_hp_return, output_file_url, data_name='factor_stratification_hp_return')
 
-# ----------------------------------------------------------时间序列回归计算alpha、beta（结束）----------------------------------------------------------
+    # ----------------------------------------------------------分组构建（结束）----------------------------------------------------------------------------
 
-# ----------------------------------------------------------显著因子挑选及所需存储数据（开始）------------------------------------------------------------
+    # ----------------------------------------------------------时间序列回归计算alpha、beta（开始）----------------------------------------------------------
 
-# 1. 小类因子收益率
+    factor_test_result, _ = get_factor_test_result(factor_stratification_return, index_return_df, sample_list=sample_list, factor_list=factor_list,
+                                                   get_factor_data_date_list=get_factor_data_date_list,
+                                                   regression_model_list=regression_model_list, quantile_dict=quantile_dict,
+                                                   rolling_window_list=rolling_window_list,
+                                                   stratification_num=stratification_number)
+    factor_test_result = optimize_data_ram(factor_test_result)
+    pickle_dump_data(factor_test_result, output_file_url, data_name='factor_test_result')
 
-factor_stratification_hp_return = get_factor_stratification_hp_return(factor_stratification_return, market_mean_return, sample_list=sample_list,
-                                                                      factor_list=factor_list, stratification_num=stratification_number,
-                                                                      quantile_dict=quantile_dict, factor_name_dict=factor_name_dict)
-factor_stratification_hp_return = optimize_data_ram(factor_stratification_hp_return)
-pickle.dump(factor_stratification_hp_return,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_stratification_hp_return.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # ----------------------------------------------------------时间序列回归计算alpha、beta（结束）----------------------------------------------------------
 
-# 2. 将回归结果保存在一个完成的dataframe中，以便后续保存
+    # ----------------------------------------------------------显著因子挑选及所需存储数据（开始）------------------------------------------------------------
 
-factor_test_result_df = transform_dict_to_df(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
-factor_test_result_df = optimize_data_ram(factor_test_result_df)
-pickle.dump(factor_test_result_df,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/factor_test_result_df.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # 2. 将回归结果保存在一个完成的dataframe中，以便后续保存
 
-# 3. 在显著的(Alpha为正且p值小于1)各档位中，暂时筛选出解释度最高的那个档位作为该因子序号的代表
+    factor_test_result_df = transform_dict_to_df(factor_test_result, ['样本范围', '回归模型', '滚动窗口', '因子序号', '档位'])
+    factor_test_result_df = optimize_data_ram(factor_test_result_df)
+    pickle_dump_data(factor_test_result_df, output_file_url, data_name='factor_test_result_df')
 
-MES_factor_stratification_number = get_MES_factor_stratification_number_in_factor_number(
-    factor_test_result_df, sample_list, regression_model_list, rolling_window_list, factor_category_dict, factor_type_dict)
-MES_factor_stratification_number = optimize_data_ram(MES_factor_stratification_number)
-pickle.dump(MES_factor_stratification_number,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/MES_factor_stratification_number.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # 3. 在显著的(Alpha为正且p值小于1)各档位中，暂时筛选出解释度最高的那个档位作为该因子序号的代表
 
-# 4. 对因子小类进行提纯
+    MES_factor_stratification_number = get_MES_factor_stratification_number_in_factor_number(
+        factor_test_result_df, sample_list, regression_model_list, rolling_window_list, factor_category_dict, factor_type_dict)
+    MES_factor_stratification_number = optimize_data_ram(MES_factor_stratification_number)
+    pickle_dump_data(MES_factor_stratification_number, output_file_url, data_name='MES_factor_stratification_number')
 
-all_factor_number_after_purified, MES_factor_number_after_purified = \
-    purify_factor_number_in_factor_type(MES_factor_stratification_number, factor_stratification_return, index_return_df,
-                                        sample_list, regression_model_list, rolling_window_list,
-                                        get_factor_data_date_list, factor_category_dict, factor_type_dict)
-all_factor_number_after_purified = optimize_data_ram(all_factor_number_after_purified)
-pickle.dump(all_factor_number_after_purified,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/all_factor_number_after_purified.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
-MES_factor_stratification_number = optimize_data_ram(MES_factor_number_after_purified)
-pickle.dump(MES_factor_number_after_purified,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/MES_factor_number_after_purified.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # 4. 对因子小类进行提纯
 
-# 5. 对因子大类进行提纯
+    all_factor_number_after_purified, MES_factor_number_after_purified = \
+        purify_factor_number_in_factor_type(MES_factor_stratification_number, factor_stratification_return, index_return_df,
+                                            sample_list, regression_model_list, rolling_window_list,
+                                            get_factor_data_date_list, factor_category_dict, factor_type_dict)
+    all_factor_number_after_purified = optimize_data_ram(all_factor_number_after_purified)
+    pickle_dump_data(all_factor_number_after_purified, output_file_url, data_name='all_factor_number_after_purified')
+    MES_factor_number_after_purified = optimize_data_ram(MES_factor_number_after_purified)
+    pickle_dump_data(MES_factor_number_after_purified, output_file_url, data_name='MES_factor_number_after_purified')
 
-all_factor_type_after_purified, MSE_factor_type_after_purified = \
-    purify_factor_type_in_factor_category(MES_factor_number_after_purified, factor_stratification_return, index_return_df,
-                                          sample_list, regression_model_list, rolling_window_list, get_factor_data_date_list,
-                                          factor_category_dict)
-all_factor_type_after_purified = optimize_data_ram(all_factor_type_after_purified)
-pickle.dump(all_factor_type_after_purified,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/all_factor_type_after_purified.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
-MSE_factor_type_after_purified = optimize_data_ram(MSE_factor_type_after_purified)
-pickle.dump(MSE_factor_type_after_purified,
-            open('/'.join(params_data_url.split('/')[:-1]) + '/result/MSE_factor_type_after_purified.dat', 'wb'),
-            pickle.HIGHEST_PROTOCOL)
+    # 5. 对因子大类进行提纯
 
-# ----------------------------------------------------------显著因子挑选及所需存储数据（结束）------------------------------------------------------------
+    all_factor_type_after_purified, MSE_factor_type_after_purified = \
+        purify_factor_type_in_factor_category(MES_factor_number_after_purified, factor_stratification_return, index_return_df,
+                                              sample_list, regression_model_list, rolling_window_list, get_factor_data_date_list,
+                                              factor_category_dict)
+    all_factor_type_after_purified = optimize_data_ram(all_factor_type_after_purified)
+    pickle_dump_data(all_factor_type_after_purified, output_file_url, data_name='all_factor_type_after_purified')
+    MSE_factor_type_after_purified = optimize_data_ram(MSE_factor_type_after_purified)
+    pickle_dump_data(MSE_factor_type_after_purified, output_file_url, data_name='MSE_factor_type_after_purified')
 
-# ----------------------------------------------------------大类因子收益率（开始）-----------------------------------------------------------------------
+    # ----------------------------------------------------------显著因子挑选及所需存储数据（结束）------------------------------------------------------------
+
+    # ----------------------------------------------------------大类因子收益率（开始）-----------------------------------------------------------------------
 
