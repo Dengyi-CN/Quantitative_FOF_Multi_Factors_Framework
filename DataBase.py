@@ -101,7 +101,7 @@ def read_data_from_oracle_db(sql=None, account='lyzs_tinysoft', passport='lyzs@2
     print('\t开始读取数据…')
     print('\t传入的sql语句为:\n')
     for line in sql.splitlines():
-        if re.sub('\s','',line) != '':
+        if re.sub('\s', '', line) != '':
             print('\t\t*> ' + line)
     print()
     cursor = connection.cursor()
@@ -112,48 +112,54 @@ def read_data_from_oracle_db(sql=None, account='lyzs_tinysoft', passport='lyzs@2
 
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
-params_data_url = eval(input('请输入需要写入数据库的数据存放文件夹地址：'))
-account = eval(input('请输入连接数据库的账号：'))
-passport = eval(input('请输入连接数据库的密码：'))
+if __name__ == "__main__":
+    params_data_url = eval(input('请输入需要写入数据库的数据存放文件夹地址：'))
+    account = eval(input('请输入连接数据库的账号：'))
+    passport = eval(input('请输入连接数据库的密码：'))
 
-raw_data = pickle.load(open(params_data_url + '/raw_data.dat', 'rb'))
-factor_library = pd.read_excel(params_data_url + '/因子列表-初步检测.xlsx')
-factor_list = factor_library['factor_number'].tolist()
+    raw_data = pickle.load(open(params_data_url + '/raw_data.dat', 'rb'))
+    factor_library = pd.read_excel(params_data_url + '/因子列表-初步检测.xlsx')
+    factor_list = factor_library['factor_number'].tolist()
 
-# # 1. stock_info_data
-# stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 'stockid', 'stockname', 'sectorid', 'sectorname', '上市天数', '沪深300成分股',
-#           '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
-# stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
-#
-# insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data', account=account, passport=passport)
+    # 1. stock_info_data
+    # stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 'stockid', 'stockname', 'sectorid', 'sectorname', '上市天数', '沪深300成分股',
+    #           '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
+    # stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
+    #
+    # insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data', account=account, passport=passport)
 
-# 2. factor_raw_data
-# factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
-#     columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
-#     id_vars=['get_data_date', 'stock_id'], var_name=['factor_number'], value_name='factor_raw_value')
-#
-# insert_data_to_oracle_db(data=factor_raw_data.dropna(), table_name='lyzs_tinysoft.factor_raw_data', account=account, passport=passport)
+    # 2. factor_raw_data
+    factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
+        columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
+        id_vars=['get_data_date', 'stock_id'], var_name=['factor_number'], value_name='raw_value')
+    factor_raw_data = factor_raw_data.where(pd.notnull(factor_raw_data), None)
+    insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.new_factor_raw_data', account=account, passport=passport)
 
-# 3. return_data
-# return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
-#                '申万行业收益率': 'sw_1st_sector_hpr', '沪深300收益率': 'hs300_hpr', '中证500收益率': 'zz500_hpr', '中证800收益率': 'zz800_hpr',
-#                '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr', '数据提取日': 'get_data_date', 'stockid': 'stock_id'}
-# return_data = raw_data[list(return_dict.keys())].rename(columns=return_dict)
-# return_data = return_data.where(pd.notnull(return_data), None)
-# insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data', account=account, passport=passport)
-
-# 4. factor_stratificated_return
-
-factor_stratificated_return = pickle.load(open(params_data_url + '/factor_stratificated_return.dat', 'rb'))
-quantile_name_dict = {'low': '第1档收益率', **{str(i): '第' + str(i) + '档收益率' for i in range(2,10)}, 'high': '第10档收益率',
-                      '数据提取日': 'get_data_date'}
-factor_stratificated_return = factor_stratificated_return.rename(columns=quantile_name_dict).melt(
-    id_vars=['factor_number', 'get_data_date', 'sample_scope'], var_name=['type_name'], value_name='value')
-factor_stratificated_return = factor_stratificated_return.where(pd.notnull(factor_stratificated_return), None)
-insert_data_to_oracle_db(data=factor_stratificated_return, table_name='lyzs_tinysoft.factor_return', account=account, passport=passport)
-
-# 5. factor_return_regression
-
-factor_return_regression = pickle.load(open(params_data_url + '/factor_return_regression.dat', 'rb'))
-factor_return_regression = factor_return_regression.where(pd.notnull(factor_return_regression), None)
-insert_data_to_oracle_db(data=factor_return_regression, table_name='lyzs_tinysoft.factor_return_regression', account=account, passport=passport)
+    # # 3. return_data
+    # return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
+    #                '申万行业收益率': 'sw_1st_sector_hpr', '沪深300收益率': 'hs300_hpr', '中证500收益率': 'zz500_hpr', '中证800收益率': 'zz800_hpr',
+    #                '上证综指收益率': 'szzz_hpr', '申万A股收益率': 'swag_hpr', '数据提取日': 'get_data_date', 'stockid': 'stock_id'}
+    # return_data = raw_data[list(return_dict.keys())].rename(columns=return_dict)
+    # return_data = return_data.where(pd.notnull(return_data), None)
+    # insert_data_to_oracle_db(data=return_data, table_name='lyzs_tinysoft.return_data', account=account, passport=passport)
+    #
+    # # 4. factor_stratificated_return
+    #
+    # factor_stratificated_return = pickle.load(open(params_data_url + '/factor_stratificated_return.dat', 'rb'))
+    # quantile_name_dict = {'low': '第1档收益率', **{str(i): '第' + str(i) + '档收益率' for i in range(2,10)}, 'high': '第10档收益率',
+    #                       '数据提取日': 'get_data_date'}
+    # factor_stratificated_return = factor_stratificated_return.rename(columns=quantile_name_dict).melt(
+    #     id_vars=['factor_number', 'get_data_date', 'sample_scope'], var_name=['type_name'], value_name='value')
+    # factor_stratificated_return = factor_stratificated_return.where(pd.notnull(factor_stratificated_return), None)
+    # insert_data_to_oracle_db(data=factor_stratificated_return, table_name='lyzs_tinysoft.factor_return', account=account, passport=passport)
+    #
+    # # 5. factor_return_regression
+    #
+    # factor_return_regression = pickle.load(open(params_data_url + '/factor_return_regression.dat', 'rb'))
+    # factor_return_regression = factor_return_regression.where(pd.notnull(factor_return_regression), None)
+    # insert_data_to_oracle_db(data=factor_return_regression, table_name='lyzs_tinysoft.factor_return_regression', account=account, passport=passport)
+    #
+    # # 6. factor_raw_data_describe
+    # factor_raw_data_describe = pickle.load(open(params_data_url + '/factor_raw_data_describe.dat', 'rb'))
+    # factor_raw_data_describe = factor_raw_data_describe.where(pd.notnull(factor_raw_data_describe), None)
+    # insert_data_to_oracle_db(data=factor_raw_data_describe, table_name='lyzs_tinysoft.factor_raw_data_description', account=account, passport=passport)
