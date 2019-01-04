@@ -60,8 +60,8 @@ if __name__ == "__main__":
         where get_data_freq = \'周度\'
         order by get_data_date
     '''
-    # all_get_data_date = read_data_from_oracle_db(date_sql)['GET_DATA_DATE']
-    all_get_data_date = pd.read_excel('/Users/yi.deng/Desktop/file/database/日期序列-周度.xlsx')['endt']
+    all_get_data_date = read_data_from_oracle_db(date_sql)['GET_DATA_DATE']
+    # all_get_data_date = pd.read_excel('/Users/yi.deng/Desktop/file/database/日期序列-周度.xlsx')['endt']
     all_get_data_date.name = 'get_data_date'
     all_get_data_date = all_get_data_date.apply(lambda date: date.strftime('%Y-%m-%d'))
 
