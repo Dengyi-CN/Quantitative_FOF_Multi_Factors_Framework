@@ -61,9 +61,7 @@ if __name__ == "__main__":
         order by get_data_date
     '''
     all_get_data_date = read_data_from_oracle_db(date_sql)['GET_DATA_DATE']
-    # all_get_data_date = pd.read_excel('/Users/yi.deng/Desktop/file/database/日期序列-周度.xlsx')['endt']
     all_get_data_date.name = 'get_data_date'
-    all_get_data_date = all_get_data_date.apply(lambda date: date.strftime('%Y-%m-%d'))
 
     ranking_columns = ['regression_model', 'rolling_window', 'factor_number', 'type_name', 'get_data_date',
                        'alpha_significance', 'alpha', 'alpha_ste', 'alpha_t_value', 'alpha_p_value',
