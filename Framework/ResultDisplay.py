@@ -39,7 +39,7 @@ def fill_factor_number_info(data, factor_name_dict=None, factor_first_class_dict
 if __name__ == "__main__":
 
     # 测试
-    output_file_url = '/Users/yi.deng/凌云至善/投研/FOF研究/分组体系/因子初步检测/20181228因子展示/'
+    output_file_url = 'D:/Quantitative_FOF_Framework_data/ResultDisplay_20181228'
 
     factor_list, factor_name_dict, factor_first_class_dict, factor_second_class_dict = get_factor_info()
 
