@@ -17,11 +17,11 @@ from collections import Counter
 def get_factor_info():
     factor_library = read_data_from_oracle_db('select * from lyzs_tinysoft.factor_library')
     # factor_library = pd.read_excel('/Users/yi.deng/Desktop/file/database/因子列表-初步检测.xlsx')
-    factor_list = factor_library['factor_number'].tolist()
-    factor_name_dict = {factor_library.loc[i, 'factor_number']: factor_library.loc[i, 'factor_name'] for i in range(factor_library.shape[0])}
-    factor_second_class_dict = {factor_library.loc[i, 'factor_number']: factor_library.loc[i, 'second_class'] for i in
+    factor_list = factor_library['FACTOR_NUMBER'].tolist()
+    factor_name_dict = {factor_library.loc[i, 'FACTOR_NUMBER']: factor_library.loc[i, 'FACTOR_NAME'] for i in range(factor_library.shape[0])}
+    factor_second_class_dict = {factor_library.loc[i, 'FACTOR_NUMBER']: factor_library.loc[i, 'SECOND_CLASS'] for i in
                                 range(factor_library.shape[0])}
-    factor_first_class_dict = {factor_library.loc[i, 'factor_number']: factor_library.loc[i, 'first_class'] for i in range(factor_library.shape[0])}
+    factor_first_class_dict = {factor_library.loc[i, 'FACTOR_NUMBER']: factor_library.loc[i, 'FIRST_CLASS'] for i in range(factor_library.shape[0])}
     return factor_list, factor_name_dict, factor_first_class_dict, factor_second_class_dict
 
 
