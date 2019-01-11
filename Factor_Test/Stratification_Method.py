@@ -598,8 +598,6 @@ def transform_dict_to_df(dict_data, keys_column_name_list):
     那么该参数就是['股票池', '回归模型']
     :return: 将dict_data中的keys全部转换为了columns的dataframe
     """
-    action_str = '保存因子序号各档回归检测结果'
-    print_high_level_divided_str(action_str)
 
     dataframe_data = pd.DataFrame()
     for key_list, df_data in dict_data.items():
@@ -608,7 +606,6 @@ def transform_dict_to_df(dict_data, keys_column_name_list):
         dataframe_data = pd.concat([dataframe_data, df_data])
     dataframe_data.index = range(dataframe_data.shape[0])
 
-    print_high_level_divided_str(action_str)
     return dataframe_data
 
 
