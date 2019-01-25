@@ -49,6 +49,7 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
     except BaseException:
         raise BaseException('数据库连接出错。')
 
+    data = data.where(pd.notnull(data), None)
     print('\t开始写入数据表' + table_name + '…')
     cursor = connection.cursor()
 
@@ -91,49 +92,51 @@ def insert_data_to_oracle_db(data=None, table_name=None, account='lyzs_tinysoft'
 
 @print_seq_line('读取数据')
 # @logging()
-def read_data_from_oracle_db(sql=None, account='lyzs_tinysoft', passport='lyzs@2018'):
+def read_data_from_oracle_db(sql=None, account='lyzs_tinysoft', passport='lyzs@2018', print_context=True):
 
     try:
         connection = connect_oracle_db(account, passport)
     except BaseException:
         raise BaseException('数据库连接出错。')
 
-    print('\t开始读取数据…')
-    print('\t传入的sql语句为:\n')
-    for line in sql.splitlines():
-        if re.sub('\s', '', line) != '':
-            print('\t\t*> ' + line)
-    print()
+    if print_context:
+        print('\t开始读取数据…')
+        print('\t传入的sql语句为:\n')
+        for line in sql.splitlines():
+            if re.sub('\s', '', line) != '':
+                print('\t\t*> ' + line)
+        print()
     cursor = connection.cursor()
     cursor.execute(sql)
     exec_result = pd.DataFrame(cursor.fetchall(), columns=[i[0] for i in cursor.description])
-    print('\t读取数据成功，共' + 'x'.join([str(i) for i in exec_result.shape]) + '条')
+    if print_context:
+        print('\t读取数据成功，共' + 'x'.join([str(i) for i in exec_result.shape]) + '条')
     return exec_result
 
 
 # ----------------------------------------------------------函数（结束）-------------------------------------------------------------------------------
 if __name__ == "__main__":
-    params_data_url = eval(input('请输入需要写入数据库的数据存放文件夹地址：'))
-    account = eval(input('请输入连接数据库的账号：'))
-    passport = eval(input('请输入连接数据库的密码：'))
-
-    raw_data = pickle.load(open(params_data_url + '/raw_data.dat', 'rb'))
-    factor_library = pd.read_excel(params_data_url + '/因子列表-初步检测.xlsx')
-    factor_list = factor_library['factor_number'].tolist()
-
-    # 1. stock_info_data
-    # stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 'stockid', 'stockname', 'sectorid', 'sectorname', '上市天数', '沪深300成分股',
-    #           '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
-    # stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
+    # params_data_url = eval(input('请输入需要写入数据库的数据存放文件夹地址：'))
+    # account = eval(input('请输入连接数据库的账号：'))
+    # passport = eval(input('请输入连接数据库的密码：'))
     #
-    # insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data', account=account, passport=passport)
-
-    # 2. factor_raw_data
-    factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
-        columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
-        id_vars=['get_data_date', 'stock_id'], var_name=['factor_number'], value_name='raw_value')
-    factor_raw_data = factor_raw_data.where(pd.notnull(factor_raw_data), None)
-    insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.new_factor_raw_data', account=account, passport=passport)
+    # raw_data = pickle.load(open(params_data_url + '/raw_data.dat', 'rb'))
+    # factor_library = pd.read_excel(params_data_url + '/因子列表-初步检测.xlsx')
+    # factor_list = factor_library['factor_number'].tolist()
+    #
+    # # 1. stock_info_data
+    # # stock_info_data = raw_data[['数据提取日', '财务数据最新报告期', 'stockid', 'stockname', 'sectorid', 'sectorname', '上市天数', '沪深300成分股',
+    # #           '中证500成分股', '中证800成分股', '申万A股成分股', '是否st', '是否pt', '是否停牌']].copy()
+    # # stock_info_data.columns = pd.read_excel(params_data_url + '/量化FOF研究-数据库表设计.xlsx', sheet_name='Stock_Info_Data')['字段英文名'].tolist()
+    # #
+    # # insert_data_to_oracle_db(data=stock_info_data, table_name='lyzs_tinysoft.stock_info_data', account=account, passport=passport)
+    #
+    # # 2. factor_raw_data
+    # factor_raw_data = raw_data[['数据提取日', 'stockid'] + factor_list].rename(
+    #     columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'}).melt(
+    #     id_vars=['get_data_date', 'stock_id'], var_name=['factor_number'], value_name='raw_value')
+    # factor_raw_data = factor_raw_data.where(pd.notnull(factor_raw_data), None)
+    # insert_data_to_oracle_db(data=factor_raw_data, table_name='lyzs_tinysoft.new_factor_raw_data', account=account, passport=passport)
 
     # # 3. return_data
     # return_dict = {'持仓天数': 'holding_period_days', '持仓期停牌天数占比': 'hp_suspension_days_pct', '持仓期收益率': 'holding_period_return',
@@ -163,3 +166,23 @@ if __name__ == "__main__":
     # factor_raw_data_describe = pickle.load(open(params_data_url + '/factor_raw_data_describe.dat', 'rb'))
     # factor_raw_data_describe = factor_raw_data_describe.where(pd.notnull(factor_raw_data_describe), None)
     # insert_data_to_oracle_db(data=factor_raw_data_describe, table_name='lyzs_tinysoft.factor_raw_data_description', account=account, passport=passport)
+
+    data_url = '/Users/yi.deng/Desktop/因子数据0831'
+
+    date_list = os.listdir(data_url)
+    data_list = []
+
+    for i, file_name in enumerate(date_list):
+        if file_name[-4:] == 'xlsx':
+            # tempo_factor_data = pd.read_excel(fact_data_url + '/' + file_name, dtype=all_type_dict)
+            # tempo_base_data = pd.read_excel(base_data_url + '/' + file_name, dtype=factor_data_type_dict)
+            temp_data = pd.read_excel(data_url + '/' + file_name).rename(columns={'数据提取日': 'get_data_date', 'stockid': 'stock_id'})
+            data_list.append(temp_data)
+
+    data = pd.concat(data_list, axis=0)
+    data = data.sort_values(by=['get_data_date', 'stock_id']).reset_index(drop=True)
+    melt_data = data.melt(id_vars=['get_data_date', 'stock_id'], var_name=['factor_number'], value_name='raw_value')
+    melt_data = melt_data.dropna()
+    melt_data = melt_data.drop_duplicates()
+    melt_data = melt_data.where(pd.notnull(melt_data), None)
+    insert_data_to_oracle_db(data=melt_data, table_name='lyzs_tinysoft.factor_raw_data')
