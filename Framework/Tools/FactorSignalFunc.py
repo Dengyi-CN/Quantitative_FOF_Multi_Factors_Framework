@@ -236,5 +236,19 @@ def get_stratify_ts_data_regression_result(factor_stratification_return, index_r
     return factor_test_result
 
 
+def standardization(factor_data, factor_name, fillna=True):
+    # factor_data输入类型为Dataframe，例如regression_data_after_y，factor_name为列名，例如 '因子暴露'。
+    Dm = factor_data[factor_name].median()
+    Dm1 = abs(factor_data[factor_name] - Dm).median()
+    cap_index = factor_data[factor_name] > (Dm + 5 * Dm1)
+    floor_index = factor_data[factor_name] < (Dm - 5 * Dm1)
+    factor_data.loc[cap_index, factor_name] = Dm + 5 * Dm1
+    factor_data.loc[floor_index, factor_name] = Dm - 5 * Dm1
+    factor_data[factor_name] = \
+        (factor_data[factor_name] - factor_data[factor_name].mean()) / factor_data[factor_name].std()
+    if fillna :
+        factor_data = factor_data.fillna(0)
+
+    return factor_data
 
 
