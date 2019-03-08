@@ -886,6 +886,8 @@ if __name__ == '__main__':
     factor_number_list = base_data.factor_raw_data['factor_number'].unique().tolist()
     factor_return_dict = {}
     all_regression_result_dict = {}
+    ic_dict = {}
+    ic_p_value_dict ={}
 
     for factor_number in factor_number_list:
 
@@ -893,7 +895,16 @@ if __name__ == '__main__':
         temp_pivot_data = temp_data.pivot_table(values='raw_value', index='get_data_date', columns='stock_id')
         factor_return_dict[factor_number], all_regression_result_dict[factor_number] = \
             cs_signal.regression(factor_data=temp_pivot_data, factor_number=factor_number)
-        cs_factor_ic, cs_factor_ic_p_value = cs_signal.ic_time_attenuate(factor_data=temp_pivot_data, max_lag_number=6)
+        ic_dict[factor_number], ic_p_value_dict[factor_number] = cs_signal.ic_time_attenuate(factor_data=temp_pivot_data, max_lag_number=6)
+
+    pickle.dump(factor_return_dict, open('D://Quantitative_FOF_Framework_data//201301tillnow_test//factor_return_dict.dat', 'rb'),
+                pickle.HIGHEST_PROTOCOL)
+    pickle.dump(all_regression_result_dict, open('D://Quantitative_FOF_Framework_data//201301tillnow_test//all_regression_result_dict.dat', 'rb'),
+                pickle.HIGHEST_PROTOCOL)
+    pickle.dump(ic_dict, open('D://Quantitative_FOF_Framework_data//201301tillnow_test//ic_dict.dat', 'rb'),
+                pickle.HIGHEST_PROTOCOL)
+    pickle.dump(ic_p_value_dict, open('D://Quantitative_FOF_Framework_data//201301tillnow_test//ic_p_value_dict.dat', 'rb'),
+                pickle.HIGHEST_PROTOCOL)
 
     # 回测
     # bt_factor_list = ['factor3', 'factor6', 'factor9', 'factor12', 'factor15', 'factor18', 'factor21', 'factor24', 'factor27']
@@ -907,7 +918,7 @@ if __name__ == '__main__':
     #
     # back_test = BackTest(base_data)
     # result = back_test.back_test()
-    # 
+    #
     # # 尝试构建纯因子策略
     #
     # # 1. 要有个流程把显著的单因子选出来
